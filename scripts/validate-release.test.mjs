@@ -105,6 +105,24 @@ test("release context pins the stable identity and URLs", () => {
     context.xpiURL,
     "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.2/zotero-gemini-notebook.xpi",
   );
+  nodeAssert.equal(context.updateFilename, "update.json");
+  nodeAssert.equal(context.unusedUpdateFilename, "update-beta.json");
+});
+
+test("release context selects only the prerelease update manifest", () => {
+  const prereleaseVersion = "0.3.3-beta.1";
+  const context = releaseContext({
+    ...packageJSON,
+    version: prereleaseVersion,
+    companionCompatibility: { validVersions: [prereleaseVersion] },
+  });
+
+  nodeAssert.equal(context.updateFilename, "update-beta.json");
+  nodeAssert.equal(context.unusedUpdateFilename, "update.json");
+  nodeAssert.equal(
+    context.manifestURL,
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/release/update-beta.json",
+  );
 });
 
 test("release context rejects an add-on ID change", () => {
