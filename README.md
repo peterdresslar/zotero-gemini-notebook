@@ -141,9 +141,10 @@ For collection browsing, searching, or more deliberate selection:
 
 ### Step 2: Import into Gemini Notebook
 
-1. Open [Gemini Notebook](https://notebooklm.google.com) in Chrome. You may open
-   an existing notebook, or start from the main page and let the extension
-   create a new notebook.
+1. Open [Gemini Notebook](https://notebook.google.com) in Chrome. Both the
+   current `notebook.google.com` host and the legacy `notebooklm.google.com`
+   host are supported. You may open an existing notebook, or start from the
+   main page and let the extension create a new notebook.
 2. Click the Zotero → Gemini Notebook extension icon in your Chrome toolbar
 3. The popup will show your staged sources with a green "Zotero connected" indicator
 4. Click **Import to Gemini Notebook**

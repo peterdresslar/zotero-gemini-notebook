@@ -1,4 +1,4 @@
-// Content script (isolated world) for notebooklm.google.com
+// Content script (isolated world) for Gemini Notebook's current and legacy hosts.
 // Communicates with injector.js (main world) via window.postMessage
 
 const { createBatch } = globalThis.ZoteroUploadTransfer;
@@ -413,8 +413,9 @@ function isNotebookDetailPage(url = window.location.href) {
   try {
     const parsed = new URL(url);
     return (
-      parsed.hostname === "notebooklm.google.com" &&
-      parsed.pathname.startsWith("/notebook/")
+      ["notebook.google.com", "notebooklm.google.com"].includes(
+        parsed.hostname,
+      ) && parsed.pathname.startsWith("/notebook/")
     );
   } catch {
     return false;

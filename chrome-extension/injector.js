@@ -1,4 +1,4 @@
-// Main-world script injected into notebooklm.google.com at document_start.
+// Main-world script injected into Gemini Notebook's current and legacy hosts.
 // Intercepts file-input .click() calls so we can inject files programmatically
 // instead of opening the native OS file picker.
 // Communicates with content script via window.postMessage.

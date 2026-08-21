@@ -6,6 +6,7 @@
   "permissions": ["activeTab"],
   "host_permissions": [
     "http://127.0.0.1:23119/*",
+    "https://notebook.google.com/*",
     "https://notebooklm.google.com/*"
   ],
   "action": {
@@ -18,12 +19,18 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://notebooklm.google.com/*"],
+      "matches": [
+        "https://notebook.google.com/*",
+        "https://notebooklm.google.com/*"
+      ],
       "js": ["upload-transfer.js", "content.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://notebooklm.google.com/*"],
+      "matches": [
+        "https://notebook.google.com/*",
+        "https://notebooklm.google.com/*"
+      ],
       "js": ["injector.js"],
       "run_at": "document_start",
       "world": "MAIN"

@@ -32,7 +32,10 @@ const chromeManifest = {
   version: "0.3.1",
   content_scripts: [
     {
-      matches: ["https://notebooklm.google.com/*"],
+      matches: [
+        "https://notebook.google.com/*",
+        "https://notebooklm.google.com/*",
+      ],
       js: ["upload-transfer.js", "content.js"],
     },
   ],

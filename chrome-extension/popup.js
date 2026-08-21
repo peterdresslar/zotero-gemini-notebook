@@ -312,7 +312,9 @@ function isNotebookLMPage(url) {
   if (!url) return false;
   try {
     const parsed = new URL(url);
-    return parsed.hostname === "notebooklm.google.com";
+    return ["notebook.google.com", "notebooklm.google.com"].includes(
+      parsed.hostname,
+    );
   } catch {
     return false;
   }
