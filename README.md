@@ -4,10 +4,10 @@
 > formerly called Zotero → NotebookLM; existing installations and legacy
 > integration identifiers remain supported.
 
-> **Updated for Zotero 9:** Compatibility is fixed and upload compatibility is
-> improved. Version 0.3.1 also fixes large transfers that exceeded Chrome's
-> 64 MiB extension-message limit. The unpacked Chrome companion must be updated
-> manually to receive this fix.
+> **Updated for Zotero 9:** Version 0.3.2 supports Google's current
+> `notebook.google.com` host while retaining the v0.3.1 large-transfer fix and
+> legacy-host support. The unpacked Chrome companion must be updated manually
+> to receive the new host permission and scripts.
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on
 your computer? This connector lets you browse your Zotero collections, stage

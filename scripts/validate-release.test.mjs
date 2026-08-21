@@ -10,13 +10,13 @@ import {
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
-  version: "0.3.1",
+  version: "0.3.2",
   config: {
     addonName: "Zotero Gemini Notebook",
     addonID: "zotero-notebooklm@peterdresslar.com",
   },
   companionCompatibility: {
-    validVersions: ["0.3.1"],
+    validVersions: ["0.3.2"],
   },
   repository: {
     url: "git+https://github.com/peterdresslar/zotero-gemini-notebook.git",
@@ -29,7 +29,11 @@ const compatibility = {
 };
 
 const chromeManifest = {
-  version: "0.3.1",
+  version: "0.3.2",
+  host_permissions: [
+    "https://notebook.google.com/*",
+    "https://notebooklm.google.com/*",
+  ],
   content_scripts: [
     {
       matches: [
@@ -37,6 +41,14 @@ const chromeManifest = {
         "https://notebooklm.google.com/*",
       ],
       js: ["upload-transfer.js", "content.js"],
+    },
+    {
+      matches: [
+        "https://notebook.google.com/*",
+        "https://notebooklm.google.com/*",
+      ],
+      js: ["injector.js"],
+      world: "MAIN",
     },
   ],
 };
@@ -51,6 +63,7 @@ const chromePackageEntries = [
   "manifest.json",
   "upload-transfer.js",
   "content.js",
+  "injector.js",
   "popup.html",
   "popup.js",
 ];
@@ -90,7 +103,7 @@ test("release context pins the stable identity and URLs", () => {
   );
   nodeAssert.equal(
     context.xpiURL,
-    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.1/zotero-gemini-notebook.xpi",
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.2/zotero-gemini-notebook.xpi",
   );
 });
 
@@ -118,10 +131,10 @@ test("release context rejects a companion excluded by its paired plugin", () => 
       releaseContext({
         ...packageJSON,
         companionCompatibility: {
-          validVersions: ["0.3.0"],
+          validVersions: ["0.3.1"],
         },
       }),
-    /Chrome extension 0\.3\.1 must be compatible/,
+    /Chrome extension 0\.3\.2 must be compatible/,
   );
 });
 
@@ -129,8 +142,8 @@ test("release context rejects invalid companion allowlists", () => {
   for (const validVersions of [
     undefined,
     [],
-    ["0.3.1", null],
-    ["0.3.1", "0.3.1"],
+    ["0.3.2", null],
+    ["0.3.2", "0.3.2"],
   ]) {
     nodeAssert.throws(() =>
       releaseContext({
@@ -148,6 +161,49 @@ test("Chrome runtime package includes and loads the transfer helper", () => {
   );
 });
 
+test("Chrome runtime package covers current and legacy notebook hosts", () => {
+  for (const hostPattern of chromeManifest.host_permissions) {
+    nodeAssert.throws(
+      () =>
+        assertChromeRuntimePackage(
+          {
+            ...chromeManifest,
+            host_permissions: chromeManifest.host_permissions.filter(
+              (host) => host !== hostPattern,
+            ),
+          },
+          popupHTML,
+          chromePackageEntries,
+        ),
+      /must grant host permission/,
+    );
+
+    for (const scriptFilename of ["content.js", "injector.js"]) {
+      nodeAssert.throws(
+        () =>
+          assertChromeRuntimePackage(
+            {
+              ...chromeManifest,
+              content_scripts: chromeManifest.content_scripts.map((entry) =>
+                entry.js.includes(scriptFilename)
+                  ? {
+                      ...entry,
+                      matches: entry.matches.filter(
+                        (host) => host !== hostPattern,
+                      ),
+                    }
+                  : entry,
+              ),
+            },
+            popupHTML,
+            chromePackageEntries,
+          ),
+        new RegExp(`must load ${scriptFilename.replace(".", "\\.")} on`),
+      );
+    }
+  }
+});
+
 test("Chrome runtime package rejects a missing transfer helper", () => {
   nodeAssert.throws(
     () =>
@@ -158,6 +214,20 @@ test("Chrome runtime package rejects a missing transfer helper", () => {
       ),
     /must include upload-transfer\.js/,
   );
+});
+
+test("Chrome runtime package includes its declared content scripts", () => {
+  for (const scriptFilename of ["content.js", "injector.js"]) {
+    nodeAssert.throws(
+      () =>
+        assertChromeRuntimePackage(
+          chromeManifest,
+          popupHTML,
+          chromePackageEntries.filter((entry) => entry !== scriptFilename),
+        ),
+      new RegExp(`must include ${scriptFilename.replace(".", "\\.")}`),
+    );
+  }
 });
 
 test("Chrome content script loads the transfer helper before content.js", () => {

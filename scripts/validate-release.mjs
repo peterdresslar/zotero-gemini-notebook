@@ -317,10 +317,29 @@ function assertChromeRuntimePackage(
   packageEntries,
   description = "Chrome extension",
 ) {
-  assert(
-    packageEntries.includes(uploadTransferFilename),
-    `${description} must include ${uploadTransferFilename}`,
-  );
+  const notebookHostPatterns = [
+    "https://notebook.google.com/*",
+    "https://notebooklm.google.com/*",
+  ];
+  const requiredRuntimeFilenames = [
+    uploadTransferFilename,
+    "content.js",
+    "injector.js",
+  ];
+
+  for (const filename of requiredRuntimeFilenames) {
+    assert(
+      packageEntries.includes(filename),
+      `${description} must include ${filename}`,
+    );
+  }
+
+  for (const hostPattern of notebookHostPatterns) {
+    assert(
+      manifest.host_permissions?.includes(hostPattern),
+      `${description} manifest must grant host permission for ${hostPattern}`,
+    );
+  }
 
   const contentScript = manifest.content_scripts?.find((entry) =>
     entry.js?.includes("content.js"),
@@ -339,6 +358,30 @@ function assertChromeRuntimePackage(
     transferScriptIndex < contentScriptIndex,
     `${description} manifest must load ${uploadTransferFilename} before content.js`,
   );
+  for (const hostPattern of notebookHostPatterns) {
+    assert(
+      contentScript.matches?.includes(hostPattern),
+      `${description} manifest must load content.js on ${hostPattern}`,
+    );
+  }
+
+  const injectorScript = manifest.content_scripts?.find((entry) =>
+    entry.js?.includes("injector.js"),
+  );
+  assert(
+    injectorScript,
+    `${description} manifest must load injector.js as a content script`,
+  );
+  assert(
+    injectorScript.world === "MAIN",
+    `${description} manifest must load injector.js in the MAIN world`,
+  );
+  for (const hostPattern of notebookHostPatterns) {
+    assert(
+      injectorScript.matches?.includes(hostPattern),
+      `${description} manifest must load injector.js on ${hostPattern}`,
+    );
+  }
 
   const scriptTags = Array.from(
     popupHTML.matchAll(/<script\b(?<attributes>[^>]*)>/giu),
