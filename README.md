@@ -1,14 +1,7 @@
 # Zotero → Gemini Notebook
 
-> Google renamed NotebookLM to Gemini Notebook in July 2026. This project was
-> formerly called Zotero → NotebookLM; existing installations and legacy
-> integration identifiers remain supported.
-
-> **Updated for Zotero 9:** Version 0.3.3 supports Google's current
-> `notebook.google.com` host, retains the v0.3.1 large-transfer fix and
-> legacy-host support, and handles staggered Zotero-plugin and Chrome-companion
-> updates more clearly. The unpacked Chrome companion must still be updated
-> manually.
+> **Updated (again!) for new Google branding**: The Chrome extension now correctly anticipates the correct URL 
+> for Gemini Notebook (*nee* NotebookLM): [notebook.google.com](notebook.google.com)
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on
 your computer? This connector lets you browse your Zotero collections, stage
