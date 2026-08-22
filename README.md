@@ -1,8 +1,9 @@
 # Zotero → Gemini Notebook
 
-> **Updated (again!) for new Google branding**: The Chrome extension now correctly anticipates the correct URL
-> for Gemini Notebook (_nee_ NotebookLM):
-> [notebook.google.com](https://notebook.google.com)
+> **Localized-interface support:** The current Chrome companion finds Gemini
+> Notebook's controls without depending on English labels. The fix has been
+> verified with the French interface at
+> [notebook.google.com](https://notebook.google.com).
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on
 your computer? This connector lets you browse your Zotero collections, stage
@@ -85,6 +86,9 @@ replace the files in its existing folder, and click **Reload** on
 `chrome://extensions/`. If you move it to a new folder, remove the old unpacked
 extension and use **Load unpacked** again. From v0.3.0 onward, the Chrome
 companion checks the compatible-version list advertised by the Zotero plugin.
+Chrome-side page-automation fixes, including localized-control support, require
+replacing and reloading the unpacked Chrome companion; a Zotero plugin update
+alone does not update the browser code.
 When the version direction is clear, the warning identifies which side needs
 attention: an older Chrome companion must be replaced manually, while an older
 Zotero plugin can usually be updated from **Tools → Plugins → gear menu →
