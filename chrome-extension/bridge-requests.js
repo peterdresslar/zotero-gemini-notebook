@@ -25,6 +25,28 @@ export function createStagedClearRequest(jobId, attachmentIds) {
   };
 }
 
+export async function clearStagedJob({
+  fetchImpl,
+  url,
+  headers,
+  jobId,
+  attachmentIds,
+}) {
+  if (typeof fetchImpl !== "function") {
+    throw new TypeError("A fetch implementation is required");
+  }
+  const request = createStagedClearRequest(jobId, attachmentIds);
+  const response = await fetchImpl(url, {
+    method: STAGED_CLEAR_METHOD,
+    headers,
+    body: JSON.stringify(request ?? {}),
+  });
+  if (!response?.ok) {
+    throw new Error("Zotero could not finalize the staged job");
+  }
+  return response;
+}
+
 function assertAttachmentId(attachmentId) {
   if (!Number.isSafeInteger(attachmentId) || attachmentId < 1) {
     throw new TypeError("Attachment ID must be a positive integer");

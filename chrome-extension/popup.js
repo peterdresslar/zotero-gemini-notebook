@@ -3,11 +3,7 @@ import {
   COMPANION_COMPATIBILITY,
   getCompatibilityWarningCopy,
 } from "./compatibility.js";
-import {
-  createStagedClearRequest,
-  createStagedFileRequest,
-  STAGED_CLEAR_METHOD,
-} from "./bridge-requests.js";
+import { clearStagedJob, createStagedFileRequest } from "./bridge-requests.js";
 
 const ZOTERO_BASE = "http://127.0.0.1:23119/notebooklm";
 const ZOTERO_REQUEST_HEADERS = { "zotero-allowed-request": "1" };
@@ -281,22 +277,13 @@ async function doImport() {
 
     // The content script now holds the complete batch. Clear staging only
     // after commit succeeds, then close the popup so Gemini Notebook can run.
-    try {
-      const clearRequest = createStagedClearRequest(
-        jobId,
-        toImport.map((item) => item.attachmentId),
-      );
-      const clearResponse = await fetch(`${ZOTERO_BASE}/clear`, {
-        method: STAGED_CLEAR_METHOD,
-        headers: ZOTERO_JSON_HEADERS,
-        body: JSON.stringify(clearRequest ?? {}),
-      });
-      if (!clearResponse.ok) {
-        throw new Error("Zotero could not finalize the staged job");
-      }
-    } catch {
-      // Non-critical
-    }
+    await clearStagedJob({
+      fetchImpl: fetch,
+      url: `${ZOTERO_BASE}/clear`,
+      headers: ZOTERO_JSON_HEADERS,
+      jobId,
+      attachmentIds: toImport.map((item) => item.attachmentId),
+    });
 
     // Close the popup so NotebookLM regains focus and Angular can run.
     // A small delay lets the sendMessage dispatch first.

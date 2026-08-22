@@ -286,6 +286,17 @@ test("claiming is job-bound and frees the legacy pending slot", () => {
   assert.equal(next.state, "staged");
 });
 
+test("an unscoped claim consumes only the current pending job", () => {
+  const { store } = createHarness();
+  const staged = store.activate(activation());
+
+  const claimed = store.claimActive();
+  assert.equal(claimed.jobId, staged.jobId);
+  assert.equal(claimed.state, "claimed");
+  assert.equal(store.getActiveJob(), null);
+  assert.deepEqual(store.getPendingItems(), []);
+});
+
 test("a job-bound claim narrows access to the selected staged subset", () => {
   const { store } = createHarness();
   const staged = store.activate(

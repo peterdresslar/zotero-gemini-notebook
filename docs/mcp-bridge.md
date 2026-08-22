@@ -169,12 +169,12 @@ Chrome companion can report a complete job lifecycle.
   superseded, expired, or otherwise terminal job cannot mutate a newer pending
   job.
 
-Clearing the slot on claim is a compatibility boundary for the v0.3.3 Chrome
-companion, which does not yet send terminal job callbacks. Once Chrome reports
-the full lifecycle, the autonomous controller can enforce one agent-controlled
-in-flight job as well as one pending slot. Until then, claimed legacy jobs
-expire after one hour so repeated imports cannot retain attachment allowlists
-for the lifetime of the Zotero process.
+Clearing the slot on claim is a compatibility boundary for the current
+transitional Chrome handoff, which does not yet send terminal job callbacks.
+Once Chrome reports the full lifecycle, the autonomous controller can enforce
+one agent-controlled in-flight job as well as one pending slot. Until then,
+claimed jobs expire after one hour so repeated imports cannot retain attachment
+allowlists for the lifetime of the Zotero process.
 
 The controller will also enforce bounded source counts, byte limits, and TTLs.
 Those limits belong to the Zotero-owned job rather than to MCP transport logic.
