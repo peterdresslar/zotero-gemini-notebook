@@ -23,7 +23,12 @@
         "https://notebook.google.com/*",
         "https://notebooklm.google.com/*"
       ],
-      "js": ["upload-transfer.js", "dialog-upload-status.js", "content.js"],
+      "js": [
+        "upload-transfer.js",
+        "dialog-upload-status.js",
+        "gemini-controls.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     },
     {
