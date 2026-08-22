@@ -50,6 +50,26 @@ test("v0.3.3 Zotero accepts v0.3.2 Chrome but still rejects v0.3.1 Chrome", () =
   );
 });
 
+test("v0.3.4 Zotero accepts compatible v0.3.2 and v0.3.3 companions", () => {
+  const compatibleVersions = ["0.3.2", "0.3.3", "0.3.4"];
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.3.2"),
+    COMPATIBLE,
+  );
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.3.3"),
+    COMPATIBLE,
+  );
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.3.4"),
+    COMPATIBLE,
+  );
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.3.1"),
+    CHROME_UPDATE_REQUIRED,
+  );
+});
+
 test("requires a Zotero update when Chrome is newer than every advertised version", () => {
   assert.equal(
     classifyChromeCompanionCompatibility(["0.3.0", "0.3.1"], "0.3.2"),
