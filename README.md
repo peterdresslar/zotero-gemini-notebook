@@ -180,6 +180,10 @@ Maintainers should follow the
 [release and auto-update checklist](docs/releasing.md) before publishing a new
 version.
 
+The planned agent/MCP bridge is not installable yet. Its trust boundary, job
+model, and phased `0.4.0` roadmap are documented in
+[MCP Bridge Architecture](docs/mcp-bridge.md).
+
 ## Known Issues
 
 - Large batches may take longer to start because Gemini Notebook creates its
