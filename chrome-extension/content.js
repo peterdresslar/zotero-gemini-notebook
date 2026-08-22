@@ -2,6 +2,14 @@
 // Communicates with injector.js (main world) via window.postMessage
 
 const { createBatch } = globalThis.ZoteroUploadTransfer;
+const dialogUploadStatus = globalThis.ZoteroDialogUploadStatus.createController(
+  {
+    document,
+    MutationObserver,
+    showFallback: (message, kind = "info") => showPageNotice(message, kind),
+    hideFallback: hidePageNotice,
+  },
+);
 const UPLOAD_BATCH_EXPIRY_MS = 5 * 60 * 1000;
 let pendingUploadBatch = null;
 let pendingUploadBatchTimer = null;
@@ -13,6 +21,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (uploadInProgress) {
         throw new Error("An upload is already in progress");
       }
+      dialogUploadStatus.hide();
+      hideAssistedUploadPrompt();
       clearPendingUploadBatch();
       pendingUploadBatch = createBatch(msg.batchId, msg.fileCount);
       schedulePendingUploadBatchExpiry();
@@ -40,6 +50,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === "uploadBatchAbort") {
     if (pendingUploadBatch?.batchId === msg.batchId) {
       clearPendingUploadBatch();
+      dialogUploadStatus.hide();
+      hideAssistedUploadPrompt();
     }
     sendResponse({ success: true });
     return;
@@ -102,7 +114,6 @@ const UPLOAD_CONTROL_LABELS = [
   "browse",
 ];
 const UPLOAD_TRIGGER_MARKER = "data-zotero-upload-trigger";
-const ASSISTED_PROMPT_ID = "zotero-notebooklm-assisted-upload";
 const PAGE_NOTICE_ID = "zotero-notebooklm-page-notice";
 const UPLOAD_TIMEOUT_MS = 120000;
 const DELAYED_UPLOAD_TRIGGER_DELAYS_MS = [
@@ -111,6 +122,11 @@ const DELAYED_UPLOAD_TRIGGER_DELAYS_MS = [
 const UPLOAD_TIMEOUT_ERROR_CODE = "zotero-upload-timeout";
 let assistedClickCleanup = null;
 
+window.addEventListener("pagehide", () => {
+  hideAssistedUploadPrompt();
+  dialogUploadStatus.hide();
+});
+
 async function uploadBatch(files) {
   if (!files || files.length === 0) {
     throw new Error("No files to upload");
@@ -118,24 +134,32 @@ async function uploadBatch(files) {
 
   const startedFromNotebookDetail = isNotebookDetailPage();
   try {
-    await ensureNotebookDetailPage();
+    const createdNotebook = await ensureNotebookDetailPage();
+    if (!createdNotebook) {
+      dialogUploadStatus.setAdding({ createdNotebook: false });
+    }
     await uploadFilesIntoCurrentNotebook(files);
-    hidePageNotice();
+    dialogUploadStatus.hide();
   } catch (error) {
     hideAssistedUploadPrompt();
+    let message;
     if (error.code === UPLOAD_TIMEOUT_ERROR_CODE) {
-      showUploadTimeoutNotice();
+      console.warn(
+        "[Zotero content] Upload timed out before NotebookLM confirmed file injection",
+      );
+      message =
+        "Zotero did not get a successful response from Gemini Notebook. If the files are still missing, open Add sources and try the import again.";
     } else if (!startedFromNotebookDetail && isNotebookDetailPage()) {
-      showPageNotice(
-        "Created a new notebook in Gemini Notebook, but Zotero had trouble adding files. Try importing again from this notebook page.",
-        "error",
-      );
+      message =
+        "Created a new notebook in Gemini Notebook, but Zotero had trouble adding files. Try importing again from this notebook page.";
     } else if (!startedFromNotebookDetail) {
-      showPageNotice(
-        "Zotero had trouble creating a new notebook in Gemini Notebook. Open or create a notebook and try importing again.",
-        "error",
-      );
+      message =
+        "Zotero had trouble creating a new notebook in Gemini Notebook. Open or create a notebook and try importing again.";
+    } else {
+      message =
+        "Zotero had trouble adding files to Gemini Notebook. Try importing again from this notebook page.";
     }
+    dialogUploadStatus.showError(message);
     throw error;
   }
 }
@@ -175,6 +199,7 @@ async function uploadFilesIntoCurrentNotebook(files) {
     () => {
       uploadFinished = true;
       hideAssistedUploadPrompt();
+      dialogUploadStatus.hide();
     },
     () => {
       uploadFinished = true;
@@ -338,7 +363,7 @@ async function ensureNotebookDetailPage() {
     throw new Error("Gemini Notebook did not navigate to a new notebook");
   }
 
-  showPageNotice("New notebook created. Adding Zotero sources...");
+  dialogUploadStatus.setAdding({ createdNotebook: true });
   if (!(await waitForNotebookWorkspace(15000))) {
     throw new Error("New notebook in Gemini Notebook did not finish loading");
   }
@@ -460,6 +485,7 @@ async function delayedUploadTrigger(delayMs, reason, getControl, isFinished) {
     );
     return;
   }
+  highlightAssistedUploadControl(control);
 
   console.log(
     "[Zotero content] Delayed upload trigger attempt (" +
@@ -792,9 +818,25 @@ function showAssistedUploadPrompt(uploadControl, fileCount) {
   hideAssistedUploadPrompt();
   if (!uploadControl || !document.body) return;
 
+  highlightAssistedUploadControl(uploadControl);
+  dialogUploadStatus.setAssisted({ fileCount });
+}
+
+function highlightAssistedUploadControl(uploadControl) {
+  if (!uploadControl || !document.body) return;
+  if (
+    assistedClickCleanup &&
+    uploadControl.hasAttribute("data-zotero-assisted-upload")
+  ) {
+    return;
+  }
+  if (assistedClickCleanup) assistedClickCleanup();
+
   console.log(
-    "[Zotero content] Showing assisted upload prompt for a trusted NotebookLM click",
+    "[Zotero content] Highlighting the upload control for a trusted NotebookLM click",
   );
+  const previousOutline = uploadControl.style.outline;
+  const previousOutlineOffset = uploadControl.style.outlineOffset;
   uploadControl.setAttribute("data-zotero-assisted-upload", "true");
   uploadControl.style.outline = "3px solid #1a73e8";
   uploadControl.style.outlineOffset = "3px";
@@ -813,36 +855,15 @@ function showAssistedUploadPrompt(uploadControl, fileCount) {
     uploadControl.removeEventListener("click", clickLogger, {
       capture: true,
     });
+    uploadControl.style.outline = previousOutline;
+    uploadControl.style.outlineOffset = previousOutlineOffset;
+    uploadControl.removeAttribute("data-zotero-assisted-upload");
     assistedClickCleanup = null;
   };
-
-  const prompt = document.createElement("div");
-  prompt.id = ASSISTED_PROMPT_ID;
-  prompt.setAttribute("role", "status");
-  Object.assign(prompt.style, {
-    position: "fixed",
-    left: "24px",
-    bottom: "24px",
-    zIndex: "2147483647",
-    maxWidth: "380px",
-    padding: "14px 16px",
-    borderRadius: "8px",
-    background: "#202124",
-    color: "#fff",
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
-    font: '13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  });
-  prompt.textContent =
-    fileCount +
-    " file" +
-    (fileCount === 1 ? "" : "s") +
-    " ready from Zotero. Communicating with Gemini Notebook. Keep this notebook open until import starts.";
-  document.body.appendChild(prompt);
 }
 
 function hideAssistedUploadPrompt() {
   if (assistedClickCleanup) assistedClickCleanup();
-  document.getElementById(ASSISTED_PROMPT_ID)?.remove();
   for (const el of document.querySelectorAll("[data-zotero-assisted-upload]")) {
     el.style.outline = "";
     el.style.outlineOffset = "";
@@ -857,6 +878,8 @@ function showPageNotice(message, kind = "info") {
   const notice = document.createElement("div");
   notice.id = PAGE_NOTICE_ID;
   notice.setAttribute("role", kind === "error" ? "alert" : "status");
+  notice.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+  notice.setAttribute("aria-atomic", "true");
   Object.assign(notice.style, {
     position: "fixed",
     top: "20px",
@@ -878,16 +901,6 @@ function showPageNotice(message, kind = "info") {
 
 function hidePageNotice() {
   document.getElementById(PAGE_NOTICE_ID)?.remove();
-}
-
-function showUploadTimeoutNotice() {
-  console.warn(
-    "[Zotero content] Upload timed out before NotebookLM confirmed file injection",
-  );
-  showPageNotice(
-    "Zotero did not get a successful response from Gemini Notebook. If the files are still missing, use Add sources to open the file dialog, then click Upload files.",
-    "error",
-  );
 }
 
 function isVisible(el) {

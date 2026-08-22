@@ -40,7 +40,7 @@ const chromeManifest = {
         "https://notebook.google.com/*",
         "https://notebooklm.google.com/*",
       ],
-      js: ["upload-transfer.js", "content.js"],
+      js: ["upload-transfer.js", "dialog-upload-status.js", "content.js"],
     },
     {
       matches: [
@@ -62,6 +62,7 @@ const popupHTML = `
 const chromePackageEntries = [
   "manifest.json",
   "upload-transfer.js",
+  "dialog-upload-status.js",
   "content.js",
   "injector.js",
   "popup.html",
@@ -222,16 +223,21 @@ test("Chrome runtime package covers current and legacy notebook hosts", () => {
   }
 });
 
-test("Chrome runtime package rejects a missing transfer helper", () => {
-  nodeAssert.throws(
-    () =>
-      assertChromeRuntimePackage(
-        chromeManifest,
-        popupHTML,
-        chromePackageEntries.filter((entry) => entry !== "upload-transfer.js"),
-      ),
-    /must include upload-transfer\.js/,
-  );
+test("Chrome runtime package rejects missing content helpers", () => {
+  for (const helperFilename of [
+    "upload-transfer.js",
+    "dialog-upload-status.js",
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertChromeRuntimePackage(
+          chromeManifest,
+          popupHTML,
+          chromePackageEntries.filter((entry) => entry !== helperFilename),
+        ),
+      new RegExp(`must include ${helperFilename.replace(".", "\\.")}`),
+    );
+  }
 });
 
 test("Chrome runtime package includes its declared content scripts", () => {
@@ -248,7 +254,7 @@ test("Chrome runtime package includes its declared content scripts", () => {
   }
 });
 
-test("Chrome content script loads the transfer helper before content.js", () => {
+test("Chrome content script loads its helpers before content.js", () => {
   nodeAssert.throws(
     () =>
       assertChromeRuntimePackage(
@@ -282,6 +288,45 @@ test("Chrome content script loads the transfer helper before content.js", () => 
         chromePackageEntries,
       ),
     /must load upload-transfer\.js before content\.js/,
+  );
+
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: ["upload-transfer.js", "content.js"],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load dialog-upload-status\.js with content\.js/,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: [
+                "dialog-upload-status.js",
+                "upload-transfer.js",
+                "content.js",
+              ],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /upload-transfer\.js, dialog-upload-status\.js, and content\.js in that order/,
   );
 });
 
@@ -318,6 +363,19 @@ test("Chrome popup loads the transfer helper before module popup.js", () => {
         chromePackageEntries,
       ),
     /must load popup\.js as a module/,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        `
+          <script src="upload-transfer.js"></script>
+          <script src="dialog-upload-status.js"></script>
+          <script type="module" src="popup.js"></script>
+        `,
+        chromePackageEntries,
+      ),
+    /popup\.html must not load dialog-upload-status\.js/,
   );
 });
 
