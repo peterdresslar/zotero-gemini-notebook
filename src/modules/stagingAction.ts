@@ -29,7 +29,10 @@ export async function stageSelectedZoteroItems(
     return result;
   }
 
-  stageItems(stagedItems);
+  stageItems(stagedItems, {
+    skippedCount: result.skippedCount,
+    source: "context-menu",
+  });
   showStagingSuccess(result.stagedCount, result.skippedCount);
   return result;
 }

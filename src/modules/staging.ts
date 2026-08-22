@@ -1,39 +1,70 @@
+import { bridgeJobStore } from "./bridgeJobStore.js";
 import type { StagedItem } from "../types";
 
-export function stageItems(items: StagedItem[]): void {
-  addon.data.stagedItems.clear();
-  for (const item of items) {
-    addon.data.stagedItems.set(item.itemId, item);
-  }
-  addon.data.stagedTimestamp = Date.now();
+export interface HumanStagingOptions {
+  skippedCount?: number;
+  source?: string;
+}
+
+export function stageItems(
+  items: StagedItem[],
+  options: HumanStagingOptions = {},
+): ReturnType<typeof bridgeJobStore.activate> | null {
+  // Preserve the current staged job when a human action resolves to no files.
+  if (items.length === 0) return null;
+
+  return bridgeJobStore.activate({
+    items,
+    origin: "human",
+    source: {
+      type: options.source ?? "selection",
+    },
+    destination: "active-or-new",
+    skippedCount: options.skippedCount ?? 0,
+    replaceExisting: true,
+  });
 }
 
 export function getStagedItems(): StagedItem[] {
-  return Array.from(addon.data.stagedItems.values());
+  return bridgeJobStore.getPendingItems();
 }
 
 export function getStagedCount(): number {
-  return addon.data.stagedItems.size;
-}
-
-export function isReady(): boolean {
-  return addon.data.stagedItems.size > 0;
-}
-
-export function clearStaged(): void {
-  addon.data.stagedItems.clear();
-  addon.data.stagedTimestamp = null;
+  return bridgeJobStore.getStagedCount();
 }
 
 export function getStagedTimestamp(): number | null {
-  return addon.data.stagedTimestamp;
+  return bridgeJobStore.getStagedTimestamp();
 }
 
-export function isStagedAttachment(attachmentId: number): boolean {
-  for (const item of addon.data.stagedItems.values()) {
-    if (item.attachmentId === attachmentId) {
-      return true;
-    }
+export function isReady(): boolean {
+  return bridgeJobStore.isReady();
+}
+
+export function claimStagedJob(
+  expectedJobId?: string,
+  selectedAttachmentIds?: number[],
+): ReturnType<typeof bridgeJobStore.claimActive> {
+  return bridgeJobStore.claimActive(expectedJobId, selectedAttachmentIds);
+}
+
+export function getCurrentStagedJob(): ReturnType<
+  typeof bridgeJobStore.getActiveJob
+> {
+  return bridgeJobStore.getActiveJob();
+}
+
+export function resetStaging(): void {
+  bridgeJobStore.reset();
+}
+
+export function isStagedAttachment(
+  attachmentId: number,
+  expectedJobId?: string,
+): boolean {
+  const pendingJob = bridgeJobStore.getActiveJob();
+  if (expectedJobId !== undefined && pendingJob?.jobId !== expectedJobId) {
+    return false;
   }
-  return false;
+  return bridgeJobStore.hasPendingAttachment(attachmentId);
 }

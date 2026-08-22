@@ -3,6 +3,11 @@ import {
   COMPANION_COMPATIBILITY,
   getCompatibilityWarningCopy,
 } from "./compatibility.js";
+import {
+  createStagedClearRequest,
+  createStagedFileRequest,
+  STAGED_CLEAR_METHOD,
+} from "./bridge-requests.js";
 
 const ZOTERO_BASE = "http://127.0.0.1:23119/notebooklm";
 const ZOTERO_REQUEST_HEADERS = { "zotero-allowed-request": "1" };
@@ -17,6 +22,7 @@ const { splitBase64IntoChunks } = globalThis.ZoteroUploadTransfer;
 let stagedItems = [];
 let selectedIds = new Set();
 let companionCompatible = false;
+let stagedJobId = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   loadPending();
@@ -32,6 +38,7 @@ async function loadPending() {
   const instructions = document.getElementById("instructions");
 
   companionCompatible = false;
+  stagedJobId = null;
   updateImportBtn();
 
   try {
@@ -56,6 +63,8 @@ async function loadPending() {
     statusText.textContent = `Zotero connected — ${data.count} source${data.count !== 1 ? "s" : ""} staged`;
 
     stagedItems = data.items || [];
+    stagedJobId =
+      typeof data.jobId === "string" && data.jobId ? data.jobId : null;
     selectedIds = new Set(stagedItems.map((i) => i.attachmentId));
 
     if (stagedItems.length === 0) {
@@ -74,6 +83,7 @@ async function loadPending() {
   } catch {
     companionCompatible = false;
     stagedItems = [];
+    stagedJobId = null;
     selectedIds.clear();
     dot.className = "status-dot error";
     statusText.textContent = "Cannot reach Zotero — is it running?";
@@ -119,6 +129,7 @@ function showIncompatibleCompanionWarning(compatibility, installedVersion) {
   instructions.style.display = "none";
   companionCompatible = false;
   stagedItems = [];
+  stagedJobId = null;
   selectedIds.clear();
   updateImportBtn();
 }
@@ -185,6 +196,7 @@ async function doImport() {
 
   const toImport = stagedItems.filter((i) => selectedIds.has(i.attachmentId));
   if (toImport.length === 0) return;
+  const jobId = stagedJobId;
 
   btn.disabled = true;
   btn.textContent = "Importing...";
@@ -216,6 +228,7 @@ async function doImport() {
 
   const batchId = globalThis.crypto.randomUUID();
   let batchStarted = false;
+  let batchCommitted = false;
 
   try {
     await sendUploadTransferMessage(tab.id, {
@@ -230,10 +243,11 @@ async function doImport() {
       progressText.textContent = `Fetching from Zotero: ${item.fileName} (${i + 1}/${toImport.length})`;
       progressFill.style.width = `${(i / toImport.length) * 50}%`;
 
+      const fileRequest = createStagedFileRequest(item.attachmentId, jobId);
       const fileRes = await fetch(`${ZOTERO_BASE}/file`, {
         method: "POST",
         headers: ZOTERO_JSON_HEADERS,
-        body: JSON.stringify({ attachmentId: item.attachmentId }),
+        body: JSON.stringify(fileRequest),
       });
       if (!fileRes.ok) throw new Error(`Failed to fetch ${item.fileName}`);
       const fileData = await fileRes.json();
@@ -263,14 +277,23 @@ async function doImport() {
       batchId,
     });
     batchStarted = false;
+    batchCommitted = true;
 
     // The content script now holds the complete batch. Clear staging only
     // after commit succeeds, then close the popup so Gemini Notebook can run.
     try {
-      await fetch(`${ZOTERO_BASE}/clear`, {
-        method: "DELETE",
-        headers: ZOTERO_REQUEST_HEADERS,
+      const clearRequest = createStagedClearRequest(
+        jobId,
+        toImport.map((item) => item.attachmentId),
+      );
+      const clearResponse = await fetch(`${ZOTERO_BASE}/clear`, {
+        method: STAGED_CLEAR_METHOD,
+        headers: ZOTERO_JSON_HEADERS,
+        body: JSON.stringify(clearRequest ?? {}),
       });
+      if (!clearResponse.ok) {
+        throw new Error("Zotero could not finalize the staged job");
+      }
     } catch {
       // Non-critical
     }
@@ -289,9 +312,16 @@ async function doImport() {
         // The tab may have navigated or reloaded. Zotero staging stays intact.
       }
     }
-    progressText.textContent = `Error uploading to Gemini Notebook: ${e.message}`;
-    btn.disabled = false;
-    btn.textContent = `Retry Import`;
+    if (batchCommitted) {
+      progressText.textContent =
+        "Files were handed to Gemini Notebook, but Zotero could not clear the staged job. Close this popup and check Gemini Notebook before staging or retrying.";
+      btn.disabled = true;
+      btn.textContent = "Check Gemini Notebook";
+    } else {
+      progressText.textContent = `Error uploading to Gemini Notebook: ${e.message}`;
+      btn.disabled = false;
+      btn.textContent = `Retry Import`;
+    }
   }
 }
 

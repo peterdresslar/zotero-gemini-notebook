@@ -17,7 +17,6 @@ export async function toStagedItem(
     attachmentId: attachment.attachmentId,
     contentType: attachment.contentType,
     fileName: attachment.fileName,
-    filePath: attachment.filePath,
   };
 }
 
@@ -66,7 +65,6 @@ async function enrichItems(items: Zotero.Item[]): Promise<ItemRow[]> {
       attachmentId: attachment?.attachmentId ?? null,
       contentType: attachment?.contentType ?? null,
       fileName: attachment?.fileName ?? null,
-      filePath: attachment?.filePath ?? null,
     });
   }
 
