@@ -1,13 +1,8 @@
 # Zotero → Gemini Notebook
 
-> Google renamed NotebookLM to Gemini Notebook in July 2026. This project was
-> formerly called Zotero → NotebookLM; existing installations and legacy
-> integration identifiers remain supported.
-
-> **Updated for Zotero 9:** Version 0.3.2 supports Google's current
-> `notebook.google.com` host while retaining the v0.3.1 large-transfer fix and
-> legacy-host support. The unpacked Chrome companion must be updated manually
-> to receive the new host permission and scripts.
+> **Updated (again!) for new Google branding**: The Chrome extension now correctly anticipates the correct URL
+> for Gemini Notebook (_nee_ NotebookLM):
+> [notebook.google.com](https://notebook.google.com)
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on
 your computer? This connector lets you browse your Zotero collections, stage
@@ -89,8 +84,13 @@ Chrome extension does not update automatically: download the latest release,
 replace the files in its existing folder, and click **Reload** on
 `chrome://extensions/`. If you move it to a new folder, remove the old unpacked
 extension and use **Load unpacked** again. From v0.3.0 onward, the Chrome
-companion checks the compatible-version list advertised by the Zotero plugin
-and blocks imports with a reinstall warning if its version is no longer valid.
+companion checks the compatible-version list advertised by the Zotero plugin.
+When the version direction is clear, the warning identifies which side needs
+attention: an older Chrome companion must be replaced manually, while an older
+Zotero plugin can usually be updated from **Tools → Plugins → gear menu →
+Check for Updates** in Zotero. The Zotero plugin also retains still-compatible
+earlier companion versions so either component can receive its update first
+when that is safe.
 
 ### Source Build
 
