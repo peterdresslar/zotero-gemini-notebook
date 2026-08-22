@@ -1,7 +1,8 @@
 # Zotero → Gemini Notebook
 
-> **Updated (again!) for new Google branding**: The Chrome extension now correctly anticipates the correct URL 
-> for Gemini Notebook (*nee* NotebookLM): [notebook.google.com](notebook.google.com)
+> **Updated (again!) for new Google branding**: The Chrome extension now correctly anticipates the correct URL
+> for Gemini Notebook (_nee_ NotebookLM):
+> [notebook.google.com](https://notebook.google.com)
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on
 your computer? This connector lets you browse your Zotero collections, stage
