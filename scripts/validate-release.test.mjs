@@ -10,13 +10,13 @@ import {
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
-  version: "0.3.2",
+  version: "0.3.3",
   config: {
     addonName: "Zotero Gemini Notebook",
     addonID: "zotero-notebooklm@peterdresslar.com",
   },
   companionCompatibility: {
-    validVersions: ["0.3.2"],
+    validVersions: ["0.3.2", "0.3.3"],
   },
   repository: {
     url: "git+https://github.com/peterdresslar/zotero-gemini-notebook.git",
@@ -29,7 +29,7 @@ const compatibility = {
 };
 
 const chromeManifest = {
-  version: "0.3.2",
+  version: "0.3.3",
   host_permissions: [
     "https://notebook.google.com/*",
     "https://notebooklm.google.com/*",
@@ -103,14 +103,14 @@ test("release context pins the stable identity and URLs", () => {
   );
   nodeAssert.equal(
     context.xpiURL,
-    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.2/zotero-gemini-notebook.xpi",
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.3/zotero-gemini-notebook.xpi",
   );
   nodeAssert.equal(context.updateFilename, "update.json");
   nodeAssert.equal(context.unusedUpdateFilename, "update-beta.json");
 });
 
 test("release context selects only the prerelease update manifest", () => {
-  const prereleaseVersion = "0.3.3-beta.1";
+  const prereleaseVersion = "0.3.4-beta.1";
   const context = releaseContext({
     ...packageJSON,
     version: prereleaseVersion,
@@ -152,7 +152,7 @@ test("release context rejects a companion excluded by its paired plugin", () => 
           validVersions: ["0.3.1"],
         },
       }),
-    /Chrome extension 0\.3\.2 must be compatible/,
+    /Chrome extension 0\.3\.3 must be compatible/,
   );
 });
 
@@ -160,8 +160,8 @@ test("release context rejects invalid companion allowlists", () => {
   for (const validVersions of [
     undefined,
     [],
-    ["0.3.2", null],
-    ["0.3.2", "0.3.2"],
+    ["0.3.3", null],
+    ["0.3.3", "0.3.3"],
   ]) {
     nodeAssert.throws(() =>
       releaseContext({

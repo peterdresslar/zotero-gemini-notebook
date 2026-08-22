@@ -1,4 +1,8 @@
-import { isChromeCompanionVersionCompatible } from "./compatibility.js";
+import {
+  classifyChromeCompanionCompatibility,
+  COMPANION_COMPATIBILITY,
+  getCompatibilityWarningCopy,
+} from "./compatibility.js";
 
 const ZOTERO_BASE = "http://127.0.0.1:23119/notebooklm";
 const ZOTERO_REQUEST_HEADERS = { "zotero-allowed-request": "1" };
@@ -38,13 +42,12 @@ async function loadPending() {
     const data = await res.json();
     const installedVersion = chrome.runtime.getManifest().version;
 
-    if (
-      !isChromeCompanionVersionCompatible(
-        data.compatibleChromeExtensionVersions,
-        installedVersion,
-      )
-    ) {
-      showIncompatibleCompanionWarning(installedVersion);
+    const compatibility = classifyChromeCompanionCompatibility(
+      data.compatibleChromeExtensionVersions,
+      installedVersion,
+    );
+    if (compatibility !== COMPANION_COMPATIBILITY.COMPATIBLE) {
+      showIncompatibleCompanionWarning(compatibility, installedVersion);
       return;
     }
 
@@ -83,31 +86,32 @@ async function loadPending() {
   }
 }
 
-function showIncompatibleCompanionWarning(installedVersion) {
+function showIncompatibleCompanionWarning(compatibility, installedVersion) {
   const dot = document.getElementById("zotero-dot");
   const statusText = document.getElementById("zotero-status");
   const emptyState = document.getElementById("empty-state");
   const itemList = document.getElementById("item-list");
   const instructions = document.getElementById("instructions");
 
+  const warning = getCompatibilityWarningCopy(compatibility, installedVersion);
+
   dot.className = "status-dot error";
-  statusText.textContent = "Chrome companion update required";
+  statusText.textContent = warning.status;
   emptyState.replaceChildren();
 
   const heading = document.createElement("p");
   const strong = document.createElement("b");
-  strong.textContent = `Version ${installedVersion} is not compatible with the installed Zotero plugin`;
+  strong.textContent = warning.heading;
   heading.appendChild(strong);
 
   const guidance = document.createElement("p");
-  guidance.textContent =
-    "Remove this Chrome extension, download the latest companion, and install it again.";
+  guidance.textContent = warning.guidance;
 
   const releaseLink = document.createElement("a");
   releaseLink.href = RELEASES_URL;
   releaseLink.target = "_blank";
   releaseLink.rel = "noopener noreferrer";
-  releaseLink.textContent = "View releases and install the newest companion";
+  releaseLink.textContent = warning.linkText;
 
   emptyState.append(heading, guidance, releaseLink);
   emptyState.style.display = "";

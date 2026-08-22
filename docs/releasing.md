@@ -5,7 +5,7 @@ The Zotero plugin and Chrome companion are released together. Only the Zotero
 
 Two GitHub releases have distinct jobs:
 
-- A versioned release such as `v0.3.2` holds the installable `.xpi`, Chrome
+- A versioned release such as `v0.3.3` holds the installable `.xpi`, Chrome
   extension `.zip`, and a version-specific `update.json` snapshot for that exact
   XPI.
 - The prerelease tagged `release` provides Zotero's permanent stable updater
@@ -33,6 +33,9 @@ legacy-URL check.
    `chrome-extension/manifest.json`. Update
    `companionCompatibility.validVersions` in `package.json`; retain an older
    companion only when its endpoint and browser behavior remain compatible.
+   The allowlist is directional: retaining the immediately previous companion
+   lets the Zotero plugin update first, while excluding an older companion when
+   it lacks required browser permissions or transport behavior.
 3. Update release-facing documentation and add
    `docs/releases/v<version>.md`.
 4. Confirm that `addon/manifest.json` reflects the Zotero versions actually
@@ -75,7 +78,7 @@ from this clean build.
 Set the release version once for the commands below:
 
 ```bash
-RELEASE_VERSION=0.3.2
+RELEASE_VERSION=0.3.3
 ```
 
 Create and push an annotated tag for the exact merged commit:
@@ -134,7 +137,7 @@ release's changed behavior. Do not announce the release yet.
 Set the version currently served by the stable updater:
 
 ```bash
-PREVIOUS_VERSION=0.3.1
+PREVIOUS_VERSION=0.3.2
 ```
 
 Run its read-only preflight, then the checked-in promoter:
