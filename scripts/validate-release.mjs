@@ -23,7 +23,6 @@ const stableAddonID = "zotero-notebooklm@peterdresslar.com";
 const stableRepository = "peterdresslar/zotero-gemini-notebook";
 const stablePackageName = "zotero-gemini-notebook";
 const legacyRepository = "peterdresslar/zotero-notebooklm";
-const legacyPublishedVersion = "0.2.0";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
 
@@ -200,6 +199,7 @@ function releaseContext(packageJSON) {
 
   const prerelease = packageJSON.version.includes("-");
   const updateFilename = prerelease ? "update-beta.json" : "update.json";
+  const unusedUpdateFilename = prerelease ? "update.json" : "update-beta.json";
   const xpiFilename = `${packageJSON.name}.xpi`;
   const chromeFilename = `${packageJSON.name}-chrome-extension.zip`;
   const releaseBase = `https://github.com/${repository}/releases/download`;
@@ -215,6 +215,7 @@ function releaseContext(packageJSON) {
     prerelease,
     repository,
     updateFilename,
+    unusedUpdateFilename,
     version: packageJSON.version,
     xpiFilename,
     xpiURL: `${releaseBase}/v${packageJSON.version}/${xpiFilename}`,
@@ -521,6 +522,11 @@ async function validateLocalRelease(packageJSON) {
   await assertFile(xpiPath, "Zotero XPI");
   await assertFile(chromePath, "Chrome extension package");
   await assertFile(updatePath, "update manifest");
+  const buildEntries = await readdir(buildDirectory);
+  assert(
+    !buildEntries.includes(expected.unusedUpdateFilename),
+    `Release build must not retain unused ${expected.unusedUpdateFilename}`,
+  );
   assertArchiveIntegrity(xpiPath);
   assertArchiveIntegrity(chromePath);
   assertArchiveHygiene(xpiPath);
@@ -550,32 +556,11 @@ async function validateLocalRelease(packageJSON) {
   );
   await assertUpdateHash(xpiPath, hash);
 
-  if (!expected.prerelease) {
-    const betaPath = join(buildDirectory, "update-beta.json");
-    await assertFile(betaPath, "beta update manifest");
-    const betaManifest = await readJSON(
-      betaPath,
-      "generated beta update manifest",
-    );
-    const { hash: betaHash } = assertUpdateManifest(
-      betaManifest,
-      expected,
-      zoteroCompatibility,
-    );
-    await assertUpdateHash(xpiPath, betaHash);
-  }
-
   console.log(
     `Release preflight passed for v${expected.version}: ` +
       `${expected.xpiFilename}, ${expected.chromeFilename}, and ` +
       `${expected.updateFilename}`,
   );
-  if (expected.version === legacyPublishedVersion) {
-    console.warn(
-      "The published v0.2.0 release uses legacy asset names. " +
-        "Do not upload this locally generated update.json; bump the version first.",
-    );
-  }
 }
 
 async function fetchPublic(url, description) {
@@ -606,9 +591,7 @@ async function validatePublishedRelease(
 ) {
   const expected = releaseContext(packageJSON);
   const expectedVersion = expectedVersionOverride ?? expected.version;
-  const historicalMode =
-    expectedVersion !== expected.version ||
-    expectedVersion === legacyPublishedVersion;
+  const historicalMode = expectedVersion !== expected.version;
   const downloadManifestURL = manifestURLOverride ?? expected.manifestURL;
   const manifestResponse = await fetchPublic(
     downloadManifestURL,

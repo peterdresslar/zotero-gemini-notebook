@@ -1,5 +1,13 @@
+import { rm } from "node:fs/promises";
+
 import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
+
+const updateFilename = pkg.version.includes("-")
+  ? "update-beta.json"
+  : "update.json";
+const unusedUpdateFilename =
+  updateFilename === "update.json" ? "update-beta.json" : "update.json";
 
 export default defineConfig({
   source: ["src", "addon"],
@@ -8,9 +16,7 @@ export default defineConfig({
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
   xpiName: pkg.name,
-  updateURL: `https://github.com/{{owner}}/{{repo}}/releases/download/release/${
-    pkg.version.includes("-") ? "update-beta.json" : "update.json"
-  }`,
+  updateURL: `https://github.com/{{owner}}/{{repo}}/releases/download/release/${updateFilename}`,
   xpiDownloadLink:
     "https://github.com/{{owner}}/{{repo}}/releases/download/v{{version}}/{{xpiName}}.xpi",
 
@@ -26,6 +32,13 @@ export default defineConfig({
     },
     prefs: {
       prefix: pkg.config.prefsPrefix,
+    },
+    hooks: {
+      "build:done": async ({ dist }) => {
+        // Scaffold always emits update-beta.json. Keep only the manifest that
+        // this package actually references so release output is unambiguous.
+        await rm(`${dist}/${unusedUpdateFilename}`, { force: true });
+      },
     },
     esbuildOptions: [
       {

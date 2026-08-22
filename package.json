@@ -34,9 +34,10 @@
     "package:chrome": "mkdir -p .scaffold/build && rm -f .scaffold/build/zotero-gemini-notebook-chrome-extension.zip && cd chrome-extension && zip -qr ../.scaffold/build/zotero-gemini-notebook-chrome-extension.zip .",
     "package:release": "pnpm run build && pnpm run package:chrome && pnpm run release:check",
     "release:check": "pnpm run test:release && node scripts/validate-release.mjs",
+    "release:promote": "node scripts/promote-release.mjs",
     "release:verify-published": "node scripts/validate-release.mjs --published",
     "test": "zotero-plugin test",
-    "test:release": "node --test scripts/validate-release.test.mjs scripts/compatibility.test.mjs scripts/upload-transfer.test.mjs",
+    "test:release": "node --test scripts/*.test.mjs",
     "update-deps": "pnpm update"
   },
   "dependencies": {
