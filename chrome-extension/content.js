@@ -2,6 +2,11 @@
 // Communicates with injector.js (main world) via window.postMessage
 
 const { createBatch } = globalThis.ZoteroUploadTransfer;
+const geminiControls = globalThis.ZoteroGeminiControls.createLocator({
+  queryAll: querySelectorAllDeep,
+  isVisible,
+  isDisabled,
+});
 const dialogUploadStatus = globalThis.ZoteroDialogUploadStatus.createController(
   {
     document,
@@ -373,6 +378,9 @@ async function ensureNotebookDetailPage() {
 }
 
 function findCreateNotebookControl() {
+  const structuralControl = geminiControls.findCreateNotebookControl(document);
+  if (structuralControl) return structuralControl;
+
   const candidates = [
     ...findClickableByTextAll("create new notebook"),
     ...findClickableByTextAll("create new"),
@@ -424,6 +432,7 @@ async function waitForNotebookWorkspace(timeoutMs) {
     if (
       document.querySelector("add-sources-dialog") ||
       document.querySelector(".sources-list-dropzone") ||
+      geminiControls.findAddSourcesControl(document) ||
       findClickableByText("add sources")
     ) {
       console.log("[Zotero content] Notebook workspace is ready");
@@ -689,6 +698,7 @@ async function ensureAddSourcesDialog(isFinished) {
   if (existing) return existing;
 
   const addBtn =
+    geminiControls.findAddSourcesControl(document) ||
     document.querySelector('[aria-label*="Add source" i]') ||
     findClickableByText("add sources");
 
@@ -708,20 +718,22 @@ async function ensureAddSourcesDialog(isFinished) {
 }
 
 function findUploadFileControls(root = document) {
-  const candidates = [];
-  const seen = new Set();
+  const structuralControls = geminiControls.findUploadFileControls(root);
+  const fallbackControls = [];
+  const seen = new Set(structuralControls);
 
   for (const label of UPLOAD_CONTROL_LABELS) {
     for (const el of findClickableByTextAll(label, root)) {
       if (seen.has(el)) continue;
       seen.add(el);
-      candidates.push(el);
+      fallbackControls.push(el);
     }
   }
 
-  return candidates.sort(
+  fallbackControls.sort(
     (a, b) => scoreUploadControl(b) - scoreUploadControl(a),
   );
+  return [...structuralControls, ...fallbackControls];
 }
 
 function findClickableByText(text, root = document) {

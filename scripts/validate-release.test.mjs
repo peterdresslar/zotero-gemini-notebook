@@ -10,13 +10,13 @@ import {
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
-  version: "0.3.3",
+  version: "0.3.4",
   config: {
     addonName: "Zotero Gemini Notebook",
     addonID: "zotero-notebooklm@peterdresslar.com",
   },
   companionCompatibility: {
-    validVersions: ["0.3.2", "0.3.3"],
+    validVersions: ["0.3.2", "0.3.3", "0.3.4"],
   },
   repository: {
     url: "git+https://github.com/peterdresslar/zotero-gemini-notebook.git",
@@ -29,7 +29,7 @@ const compatibility = {
 };
 
 const chromeManifest = {
-  version: "0.3.3",
+  version: "0.3.4",
   host_permissions: [
     "https://notebook.google.com/*",
     "https://notebooklm.google.com/*",
@@ -40,7 +40,12 @@ const chromeManifest = {
         "https://notebook.google.com/*",
         "https://notebooklm.google.com/*",
       ],
-      js: ["upload-transfer.js", "dialog-upload-status.js", "content.js"],
+      js: [
+        "upload-transfer.js",
+        "dialog-upload-status.js",
+        "gemini-controls.js",
+        "content.js",
+      ],
     },
     {
       matches: [
@@ -64,6 +69,7 @@ const chromePackageEntries = [
   "upload-transfer.js",
   "dialog-upload-status.js",
   "bridge-requests.js",
+  "gemini-controls.js",
   "content.js",
   "injector.js",
   "popup.html",
@@ -105,14 +111,14 @@ test("release context pins the stable identity and URLs", () => {
   );
   nodeAssert.equal(
     context.xpiURL,
-    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.3/zotero-gemini-notebook.xpi",
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.4/zotero-gemini-notebook.xpi",
   );
   nodeAssert.equal(context.updateFilename, "update.json");
   nodeAssert.equal(context.unusedUpdateFilename, "update-beta.json");
 });
 
 test("release context selects only the prerelease update manifest", () => {
-  const prereleaseVersion = "0.3.4-beta.1";
+  const prereleaseVersion = "0.3.5-beta.1";
   const context = releaseContext({
     ...packageJSON,
     version: prereleaseVersion,
@@ -154,7 +160,7 @@ test("release context rejects a companion excluded by its paired plugin", () => 
           validVersions: ["0.3.1"],
         },
       }),
-    /Chrome extension 0\.3\.3 must be compatible/,
+    /Chrome extension 0\.3\.4 must be compatible/,
   );
 });
 
@@ -162,8 +168,8 @@ test("release context rejects invalid companion allowlists", () => {
   for (const validVersions of [
     undefined,
     [],
-    ["0.3.3", null],
-    ["0.3.3", "0.3.3"],
+    ["0.3.4", null],
+    ["0.3.4", "0.3.4"],
   ]) {
     nodeAssert.throws(() =>
       releaseContext({
@@ -175,7 +181,7 @@ test("release context rejects invalid companion allowlists", () => {
   }
 });
 
-test("Chrome runtime package includes and loads the transfer helper", () => {
+test("Chrome runtime package includes and loads the content helpers", () => {
   nodeAssert.doesNotThrow(() =>
     assertChromeRuntimePackage(chromeManifest, popupHTML, chromePackageEntries),
   );
@@ -229,6 +235,7 @@ test("Chrome runtime package rejects missing content helpers", () => {
     "upload-transfer.js",
     "dialog-upload-status.js",
     "bridge-requests.js",
+    "gemini-controls.js",
   ]) {
     nodeAssert.throws(
       () =>
@@ -320,6 +327,7 @@ test("Chrome content script loads its helpers before content.js", () => {
               js: [
                 "dialog-upload-status.js",
                 "upload-transfer.js",
+                "gemini-controls.js",
                 "content.js",
               ],
             },
@@ -328,7 +336,50 @@ test("Chrome content script loads its helpers before content.js", () => {
         popupHTML,
         chromePackageEntries,
       ),
-    /upload-transfer\.js, dialog-upload-status\.js, and content\.js in that order/,
+    /upload-transfer\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: [
+                "upload-transfer.js",
+                "dialog-upload-status.js",
+                "content.js",
+              ],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load gemini-controls\.js with content\.js/,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: [
+                "upload-transfer.js",
+                "dialog-upload-status.js",
+                "content.js",
+                "gemini-controls.js",
+              ],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /upload-transfer\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
   );
 });
 

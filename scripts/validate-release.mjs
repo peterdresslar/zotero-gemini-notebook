@@ -27,6 +27,7 @@ const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
 const bridgeRequestsFilename = "bridge-requests.js";
+const geminiControlsFilename = "gemini-controls.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -328,6 +329,7 @@ function assertChromeRuntimePackage(
     uploadTransferFilename,
     dialogUploadStatusFilename,
     bridgeRequestsFilename,
+    geminiControlsFilename,
     "content.js",
     "injector.js",
   ];
@@ -358,6 +360,9 @@ function assertChromeRuntimePackage(
   const dialogStatusScriptIndex = contentScript.js.indexOf(
     dialogUploadStatusFilename,
   );
+  const geminiControlsScriptIndex = contentScript.js.indexOf(
+    geminiControlsFilename,
+  );
   assert(
     transferScriptIndex !== -1,
     `${description} manifest must load ${uploadTransferFilename} with content.js`,
@@ -371,10 +376,16 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${dialogUploadStatusFilename} with content.js`,
   );
   assert(
+    geminiControlsScriptIndex !== -1,
+    `${description} manifest must load ${geminiControlsFilename} with content.js`,
+  );
+  assert(
     transferScriptIndex < dialogStatusScriptIndex &&
-      dialogStatusScriptIndex < contentScriptIndex,
+      dialogStatusScriptIndex < geminiControlsScriptIndex &&
+      geminiControlsScriptIndex < contentScriptIndex,
     `${description} manifest must load ${uploadTransferFilename}, ` +
-      `${dialogUploadStatusFilename}, and content.js in that order`,
+      `${dialogUploadStatusFilename}, ${geminiControlsFilename}, and content.js ` +
+      "in that order",
   );
   for (const hostPattern of notebookHostPatterns) {
     assert(
