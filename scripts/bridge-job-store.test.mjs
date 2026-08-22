@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import {
   BridgeJobStoreError,
   createBridgeJobStore,
+  createOpaqueId,
 } from "../src/modules/bridgeJobStore.js";
 
 function createHarness({ maxHistory = 100, claimedTtlMs = 3_600_000 } = {}) {
@@ -68,6 +70,89 @@ function assertNoPrivateSnapshotFields(value) {
     assertNoPrivateSnapshotFields(entry);
   }
 }
+
+test("uses Zotero's privileged UUID generator when Web Crypto is unavailable", () => {
+  const jobId = createOpaqueId({
+    cryptoApi: null,
+    uuidGenerator: {
+      generateUUID: () => "{123e4567-e89b-42d3-a456-426614174000}",
+    },
+  });
+
+  assert.equal(jobId, "123e4567-e89b-42d3-a456-426614174000");
+});
+
+test("falls through broken Web Crypto providers to Zotero's UUID generator", () => {
+  const uuidGenerator = {
+    generateUUID: () => "{123e4567-e89b-42d3-a456-426614174000}",
+  };
+
+  assert.equal(
+    createOpaqueId({
+      cryptoApi: { randomUUID: () => "malformed" },
+      uuidGenerator,
+    }),
+    "123e4567-e89b-42d3-a456-426614174000",
+  );
+  assert.equal(
+    createOpaqueId({
+      cryptoApi: {
+        randomUUID: () => {
+          throw new Error("unavailable");
+        },
+        getRandomValues: () => {
+          throw new Error("unavailable");
+        },
+      },
+      uuidGenerator,
+    }),
+    "123e4567-e89b-42d3-a456-426614174000",
+  );
+});
+
+test("fails closed when no secure job ID provider is available", () => {
+  assert.throws(
+    () => createOpaqueId({ cryptoApi: null, uuidGenerator: null }),
+    expectStoreError("SECURE_RANDOM_UNAVAILABLE"),
+  );
+  assert.throws(
+    () =>
+      createOpaqueId({
+        cryptoApi: null,
+        uuidGenerator: { generateUUID: () => "not-a-version-4-uuid" },
+      }),
+    expectStoreError("SECURE_RANDOM_UNAVAILABLE"),
+  );
+  for (const malformed of [
+    "{123e4567-e89b-42d3-a456-426614174000",
+    "123e4567-e89b-42d3-a456-426614174000}",
+  ]) {
+    assert.throws(
+      () =>
+        createOpaqueId({
+          cryptoApi: null,
+          uuidGenerator: { generateUUID: () => malformed },
+        }),
+      expectStoreError("SECURE_RANDOM_UNAVAILABLE"),
+    );
+  }
+});
+
+test("accepts JSON metadata created in another JavaScript realm", () => {
+  const { store } = createHarness();
+  const source = runInNewContext(`({
+    type: "items",
+    libraryID: 1,
+    itemKeys: ["ABC123"]
+  })`);
+
+  const created = store.activate(activation({ source }));
+  assert.deepEqual(created.source, {
+    type: "items",
+    libraryID: 1,
+    itemKeys: ["ABC123"],
+  });
+});
 
 test("activates one staged job and exposes defensive pending-item copies", () => {
   const { store } = createHarness();

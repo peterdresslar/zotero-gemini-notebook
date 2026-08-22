@@ -48,6 +48,16 @@ export interface BridgeJobStoreOptions {
   claimedTtlMs?: number;
 }
 
+export interface BridgeJobIdOptions {
+  cryptoApi?: {
+    randomUUID?: () => string;
+    getRandomValues?: (values: Uint8Array) => Uint8Array;
+  } | null;
+  uuidGenerator?: {
+    generateUUID: () => { toString(): string } | string;
+  } | null;
+}
+
 export type BridgeJobStoreErrorCode =
   | "INVALID_INPUT"
   | "PENDING_JOB_EXISTS"
@@ -90,6 +100,8 @@ export interface BridgeJobStore {
 export function createBridgeJobStore(
   options?: BridgeJobStoreOptions,
 ): BridgeJobStore;
+
+export function createOpaqueId(options?: BridgeJobIdOptions): string;
 
 export const bridgeJobStore: BridgeJobStore;
 

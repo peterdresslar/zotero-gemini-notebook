@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import { normalizeCreateBridgeJobInput } from "../src/modules/bridgeJobInput.js";
 
@@ -136,6 +137,27 @@ test("rejects non-plain input objects", () => {
   assert.throws(() => normalizeCreateBridgeJobInput([]), /plain input/);
   assert.throws(
     () => normalizeCreateBridgeJobInput(new (class Request {})()),
+    /plain input/,
+  );
+});
+
+test("accepts plain requests from another JavaScript realm", () => {
+  const input = runInNewContext(`({
+    libraryID: 1,
+    itemKeys: ["aaaa1111"],
+    destination: "new"
+  })`);
+
+  assert.deepEqual(normalizeCreateBridgeJobInput(input), {
+    libraryID: 1,
+    itemKeys: ["AAAA1111"],
+    destination: "new",
+    replace: false,
+  });
+
+  const classInstance = runInNewContext("new (class Request {})() ");
+  assert.throws(
+    () => normalizeCreateBridgeJobInput(classInstance),
     /plain input/,
   );
 });

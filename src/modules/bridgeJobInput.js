@@ -63,7 +63,9 @@ export function normalizeCreateBridgeJobInput(input) {
     if (!Array.isArray(input.itemKeys) || input.itemKeys.length === 0) {
       throw new TypeError("itemKeys must be a non-empty array.");
     }
-    const itemKeys = input.itemKeys.map((key) => normalizeZoteroKey(key));
+    const itemKeys = Array.from(input.itemKeys, (key) =>
+      normalizeZoteroKey(key),
+    );
     if (new Set(itemKeys).size !== itemKeys.length) {
       throw new TypeError("itemKeys must not contain duplicates.");
     }
@@ -95,5 +97,5 @@ function normalizeZoteroKey(value) {
 function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
   const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return prototype === null || Object.getPrototypeOf(prototype) === null;
 }

@@ -1,3 +1,5 @@
+/* global Components */
+
 const JOB_STATES = new Set([
   "staged",
   "claimed",
@@ -562,7 +564,7 @@ function sanitizeJson(value, label, ancestors = new Set()) {
   ancestors.add(value);
   let safeValue;
   if (Array.isArray(value)) {
-    safeValue = value.map((entry, index) =>
+    safeValue = Array.from(value, (entry, index) =>
       sanitizeJson(entry, `${label}[${index}]`, ancestors),
     );
   } else {
@@ -627,17 +629,36 @@ function readJobId(createId, jobs) {
   return jobId;
 }
 
-function createOpaqueId() {
-  const cryptoApi = globalThis.crypto;
+export function createOpaqueId({
+  cryptoApi = globalThis.crypto,
+  uuidGenerator = getRuntimeUuidGenerator(),
+} = {}) {
   if (typeof cryptoApi?.randomUUID === "function") {
-    return cryptoApi.randomUUID();
+    try {
+      const uuid = normalizeVersion4Uuid(cryptoApi.randomUUID());
+      if (uuid) return uuid;
+    } catch {
+      // Try the next secure provider.
+    }
   }
   if (typeof cryptoApi?.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    cryptoApi.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-      "",
-    );
+    try {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      return Array.from(bytes, (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+    } catch {
+      // Try Zotero's privileged secure UUID provider.
+    }
+  }
+  if (typeof uuidGenerator?.generateUUID === "function") {
+    try {
+      const uuid = normalizeVersion4Uuid(uuidGenerator.generateUUID());
+      if (uuid) return uuid;
+    } catch {
+      // Fall through to the explicit secure-randomness failure below.
+    }
   }
   throw new BridgeJobStoreError(
     "SECURE_RANDOM_UNAVAILABLE",
@@ -645,10 +666,34 @@ function createOpaqueId() {
   );
 }
 
+function normalizeVersion4Uuid(value) {
+  const generated = String(value);
+  const hasOpeningBrace = generated.startsWith("{");
+  const hasClosingBrace = generated.endsWith("}");
+  if (hasOpeningBrace !== hasClosingBrace) return null;
+  const uuid = hasOpeningBrace ? generated.slice(1, -1) : generated;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    uuid,
+  )
+    ? uuid
+    : null;
+}
+
+function getRuntimeUuidGenerator() {
+  try {
+    if (typeof Components === "undefined") return null;
+    return Components.classes["@mozilla.org/uuid-generator;1"].getService(
+      Components.interfaces.nsIUUIDGenerator,
+    );
+  } catch {
+    return null;
+  }
+}
+
 function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
   const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return prototype === null || Object.getPrototypeOf(prototype) === null;
 }
 
 function isNonemptyString(value) {
