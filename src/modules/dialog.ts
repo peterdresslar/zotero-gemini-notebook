@@ -3,6 +3,7 @@ import { getString } from "../utils/locale";
 import { isWindowAlive } from "../utils/window";
 import { getLibraries, getCollectionTree, flattenTree } from "./collections";
 import { getItemsForCollection, searchItems } from "./items";
+import { getSingleSelectedCollection } from "./selectedCollection.js";
 import { stageItems } from "./staging";
 import { showStagingSuccess } from "./stagingAction";
 import type { CollectionNode, ItemRow, StagedItem } from "../types";
@@ -89,7 +90,7 @@ async function initDialog(win: Window) {
     // Pre-select current collection if user has one selected in main pane
     try {
       const zoteroPane = Zotero.getActiveZoteroPane();
-      const currentCollection = zoteroPane.getSelectedCollection();
+      const currentCollection = getSingleSelectedCollection(zoteroPane);
       if (currentCollection) {
         Zotero.debug(
           `[NotebookLM] Pre-selecting collection: ${currentCollection.name}`,
