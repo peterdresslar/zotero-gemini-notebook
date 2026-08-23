@@ -1,7 +1,7 @@
 import { config } from "../package.json";
 import hooks from "./hooks";
+import { bridgeApi } from "./modules/bridgeJobs";
 import { createZToolkit } from "./utils/ztoolkit";
-import type { StagedItem } from "./types";
 
 class Addon {
   public data: {
@@ -13,12 +13,9 @@ class Addon {
     locale?: {
       current: any;
     };
-    // Staged items for Gemini Notebook export
-    stagedItems: Map<number, StagedItem>;
-    stagedTimestamp: number | null;
   };
   public hooks: typeof hooks;
-  public api: object;
+  public readonly api: typeof bridgeApi;
 
   constructor() {
     this.data = {
@@ -27,11 +24,9 @@ class Addon {
       env: __env__,
       initialized: false,
       ztoolkit: createZToolkit(),
-      stagedItems: new Map(),
-      stagedTimestamp: null,
     };
     this.hooks = hooks;
-    this.api = {};
+    this.api = bridgeApi;
   }
 }
 

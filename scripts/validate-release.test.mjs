@@ -68,6 +68,7 @@ const chromePackageEntries = [
   "manifest.json",
   "upload-transfer.js",
   "dialog-upload-status.js",
+  "bridge-requests.js",
   "gemini-controls.js",
   "content.js",
   "injector.js",
@@ -233,6 +234,7 @@ test("Chrome runtime package rejects missing content helpers", () => {
   for (const helperFilename of [
     "upload-transfer.js",
     "dialog-upload-status.js",
+    "bridge-requests.js",
     "gemini-controls.js",
   ]) {
     nodeAssert.throws(

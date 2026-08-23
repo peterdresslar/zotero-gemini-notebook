@@ -6,7 +6,6 @@ export interface StagedItem {
   attachmentId: number;
   contentType: string;
   fileName: string;
-  filePath: string;
 }
 
 export interface CollectionNode {
@@ -27,14 +26,49 @@ export interface ItemRow {
   attachmentId: number | null;
   contentType: string | null;
   fileName: string | null;
-  filePath: string | null;
 }
+
+export type BridgeJobState =
+  | "staged"
+  | "claimed"
+  | "submitted"
+  | "verifying"
+  | "verified"
+  | "unverified"
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "superseded";
+
+interface CreateBridgeJobBase {
+  libraryID: number;
+  destination: "new";
+  requestId?: string;
+  replace?: boolean;
+}
+
+export interface CreateBridgeJobFromItemsInput extends CreateBridgeJobBase {
+  itemKeys: string[];
+  collectionKey?: never;
+  recursive?: never;
+}
+
+export interface CreateBridgeJobFromCollectionInput extends CreateBridgeJobBase {
+  collectionKey: string;
+  recursive?: boolean;
+  itemKeys?: never;
+}
+
+export type CreateBridgeJobInput =
+  | CreateBridgeJobFromItemsInput
+  | CreateBridgeJobFromCollectionInput;
 
 export interface PendingResponse {
   items: StagedItem[];
   count: number;
   timestamp: number | null;
   compatibleChromeExtensionVersions: string[];
+  jobId: string | null;
 }
 
 export interface StatusResponse {

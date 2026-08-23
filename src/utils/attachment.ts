@@ -1,3 +1,5 @@
+import { getSafeFileName } from "./fileName.js";
+
 export const SUPPORTED_CONTENT_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -26,8 +28,7 @@ export async function getValidAttachment(
     const filePath = await attachment.getFilePathAsync();
     if (!filePath) continue;
 
-    const fileName =
-      attachment.attachmentFilename || filePath.split("/").pop() || "unknown";
+    const fileName = getSafeFileName(attachment.attachmentFilename, filePath);
 
     return {
       attachmentId,

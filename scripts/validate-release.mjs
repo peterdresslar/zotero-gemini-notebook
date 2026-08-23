@@ -26,6 +26,7 @@ const legacyRepository = "peterdresslar/zotero-notebooklm";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
+const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
 
 function assert(condition, message) {
@@ -327,6 +328,7 @@ function assertChromeRuntimePackage(
   const requiredRuntimeFilenames = [
     uploadTransferFilename,
     dialogUploadStatusFilename,
+    bridgeRequestsFilename,
     geminiControlsFilename,
     "content.js",
     "injector.js",

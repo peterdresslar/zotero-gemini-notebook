@@ -1,6 +1,7 @@
 import { initLocale, getString } from "./utils/locale";
 import { registerEndpoints } from "./modules/server";
 import { openExportDialog } from "./modules/dialog";
+import { resetStaging } from "./modules/staging";
 import {
   showStagingFailure,
   stageSelectedZoteroItems,
@@ -116,9 +117,7 @@ function onShutdown(): void {
   for (const cleanup of windowUICleanups.values()) cleanup();
   windowUICleanups.clear();
   ztoolkit.unregisterAll();
-  // Clear staged items
-  addon.data.stagedItems.clear();
-  addon.data.stagedTimestamp = null;
+  resetStaging();
   addon.data.alive = false;
   // @ts-expect-error - Plugin instance is not typed
   delete Zotero[addon.data.config.addonInstance];

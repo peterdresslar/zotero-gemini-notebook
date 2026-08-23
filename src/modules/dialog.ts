@@ -522,7 +522,6 @@ async function doExport(state: DialogState) {
       state.selectedItemIds.has(item.id) &&
       item.hasValidAttachment &&
       item.attachmentId !== null &&
-      item.filePath !== null &&
       item.fileName !== null &&
       item.contentType !== null
     ) {
@@ -534,12 +533,11 @@ async function doExport(state: DialogState) {
         attachmentId: item.attachmentId,
         contentType: item.contentType,
         fileName: item.fileName,
-        filePath: item.filePath,
       });
     }
   }
 
-  stageItems(selectedItems);
+  stageItems(selectedItems, { source: "export-dialog" });
   state.win.close();
   showStagingSuccess(selectedItems.length);
 }
