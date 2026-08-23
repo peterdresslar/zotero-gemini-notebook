@@ -25,7 +25,7 @@ const packageJSON = {
 
 const compatibility = {
   strict_min_version: "6.999",
-  strict_max_version: "9.*",
+  strict_max_version: "10.0.*",
 };
 
 const chromeManifest = {

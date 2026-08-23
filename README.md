@@ -105,7 +105,8 @@ Prerequisites:
 - Node.js 22+
 - pnpm
 - Git
-- Zotero 7, 8, or 9
+- Zotero 7 through 10. Zotero 9 and 10 are actively tested; support for Zotero
+  7 and 8 is best-effort.
 - Google Chrome (required for the companion extension)
 
 From the repository root:
