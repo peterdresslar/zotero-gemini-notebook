@@ -1,6 +1,7 @@
 import { initLocale, getString } from "./utils/locale";
 import { registerEndpoints } from "./modules/server";
 import { openExportDialog } from "./modules/dialog";
+import { openMcpConfigDialog } from "./modules/mcpConfigDialog";
 import { resetStaging } from "./modules/staging";
 import {
   showStagingFailure,
@@ -33,8 +34,33 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   windowUICleanups.get(win)?.();
   windowUICleanups.delete(win);
 
-  // Register Tools menu item
-  const menuItem = ztoolkit.UI.createElement(win.document, "menuitem", {
+  const cleanupToolsMenu = registerToolsMenu(win);
+  const cleanupItemContextMenu = registerItemContextMenu(win);
+  windowUICleanups.set(win, () => {
+    cleanupToolsMenu();
+    cleanupItemContextMenu();
+  });
+}
+
+function registerToolsMenu(win: _ZoteroTypes.MainWindow): () => void {
+  // Zotero.MenuManager starts in Zotero 8, while this add-on still supports
+  // Zotero 7. Inject the submenu into each main window and remove it with that
+  // window's cleanup callback.
+  const toolsPopup = win.document.getElementById("menu_ToolsPopup");
+  if (!toolsPopup) return () => {};
+
+  const connectorMenu = ztoolkit.UI.createElement(win.document, "menu", {
+    tag: "menu",
+    id: "zotero-notebooklm-menu-connector",
+    attributes: {
+      label: getString("menu-connector-label"),
+    },
+  });
+  const connectorPopup = ztoolkit.UI.createElement(win.document, "menupopup", {
+    tag: "menupopup",
+    id: "zotero-notebooklm-menu-connector-popup",
+  });
+  const exportMenuItem = ztoolkit.UI.createElement(win.document, "menuitem", {
     tag: "menuitem",
     id: "zotero-notebooklm-menu-export",
     attributes: {
@@ -47,13 +73,29 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
       },
     ],
   });
-  win.document.getElementById("menu_ToolsPopup")?.appendChild(menuItem);
+  const configureMcpMenuItem = ztoolkit.UI.createElement(
+    win.document,
+    "menuitem",
+    {
+      tag: "menuitem",
+      id: "zotero-notebooklm-menu-configure-mcp",
+      attributes: {
+        label: getString("menuitem-configure-mcp-label"),
+      },
+      listeners: [
+        {
+          type: "command",
+          listener: () => openMcpConfigDialog(win),
+        },
+      ],
+    },
+  );
 
-  const cleanupItemContextMenu = registerItemContextMenu(win);
-  windowUICleanups.set(win, () => {
-    cleanupItemContextMenu();
-    menuItem.remove();
-  });
+  connectorPopup.append(exportMenuItem, configureMcpMenuItem);
+  connectorMenu.appendChild(connectorPopup);
+  toolsPopup.appendChild(connectorMenu);
+
+  return () => connectorMenu.remove();
 }
 
 function registerItemContextMenu(win: _ZoteroTypes.MainWindow): () => void {

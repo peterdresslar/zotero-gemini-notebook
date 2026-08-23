@@ -1,0 +1,141 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://zoteroNotebookLM/content/notebooklm-dialog.css"
+type="text/css"?> <?xml-stylesheet
+href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
+
+<window
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+  title="Configure MCP"
+  width="720"
+  height="650"
+>
+  <vbox id="mcp-config-dialog" flex="1">
+    <html:header class="mcp-config-header">
+      <html:h1>Configure MCP</html:h1>
+      <html:p>
+        Prepare this Zotero profile for a local MCP client such as Codex or
+        Claude. MCP support is off by default.
+      </html:p>
+    </html:header>
+
+    <html:section
+      id="mcp-config-status"
+      class="mcp-status mcp-status-off"
+      role="status"
+      aria-live="polite"
+    >
+      <html:strong id="mcp-status-title">Off</html:strong>
+      <html:span id="mcp-status-detail">MCP support is disabled.</html:span>
+    </html:section>
+
+    <html:label class="mcp-enable-row" for="mcp-enable-checkbox">
+      <html:input id="mcp-enable-checkbox" type="checkbox" />
+      <html:span>
+        <html:strong>Enable MCP support</html:strong>
+        <html:small>
+          This preference alone does not install an adapter or configure an MCP
+          client.
+        </html:small>
+      </html:span>
+    </html:label>
+
+    <html:section
+      id="mcp-config-settings"
+      class="mcp-settings-panel"
+      aria-labelledby="mcp-settings-heading"
+    >
+      <html:h2 id="mcp-settings-heading" class="pane-header">
+        Client setup
+      </html:h2>
+
+      <html:div class="mcp-form-row">
+        <html:label for="mcp-client-select">MCP client</html:label>
+        <html:select id="mcp-client-select" />
+      </html:div>
+
+      <html:div class="mcp-form-row">
+        <html:label for="mcp-runtime-path">Runtime executable</html:label>
+        <html:div class="mcp-path-row">
+          <html:input
+            id="mcp-runtime-path"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="uv"
+            aria-describedby="mcp-runtime-path-help"
+          />
+          <html:button id="mcp-runtime-browse" type="button">
+            Browse…
+          </html:button>
+        </html:div>
+        <html:small id="mcp-runtime-path-help" class="mcp-field-help">
+          Select the <html:code>uv</html:code> executable that will eventually
+          launch the external MCP adapter.
+        </html:small>
+      </html:div>
+
+      <html:div class="mcp-form-row">
+        <html:label for="mcp-adapter-path">Adapter entrypoint</html:label>
+        <html:div class="mcp-path-row">
+          <html:input
+            id="mcp-adapter-path"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="server.py"
+            aria-describedby="mcp-adapter-path-help"
+          />
+          <html:button id="mcp-adapter-browse" type="button">
+            Browse…
+          </html:button>
+        </html:div>
+        <html:small id="mcp-adapter-path-help" class="mcp-field-help">
+          Select the FastMCP adapter's <html:code>server.py</html:code>
+          entrypoint. Zotero will not execute it from this dialog.
+        </html:small>
+      </html:div>
+
+      <html:div class="mcp-form-row">
+        <html:label for="mcp-client-config-path">
+          Client configuration location
+        </html:label>
+        <html:input
+          id="mcp-client-config-path"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-describedby="mcp-client-config-path-help"
+        />
+        <html:small id="mcp-client-config-path-help" class="mcp-field-help">
+          This location is recorded for setup guidance only. Zotero will not
+          read or modify the client configuration file.
+        </html:small>
+      </html:div>
+
+      <html:div class="mcp-defaults-row">
+        <html:button id="mcp-apply-defaults" type="button">
+          Apply Defaults
+        </html:button>
+        <html:span>
+          Uses the usual locations for the selected client on this computer.
+        </html:span>
+      </html:div>
+    </html:section>
+
+    <html:aside class="mcp-notice" role="note">
+      <html:strong>Adapter integration is not connected yet.</html:strong>
+      <html:span>
+        Saving this dialog records preferences only. It does not create
+        credentials, enable network endpoints, execute commands, or change MCP
+        client files.
+      </html:span>
+    </html:aside>
+
+    <hbox id="mcp-config-bottom-bar" align="center">
+      <spacer flex="1" />
+      <button id="mcp-save-btn" label="Save" />
+      <button id="mcp-cancel-btn" label="Cancel" />
+    </hbox>
+  </vbox>
+</window>
