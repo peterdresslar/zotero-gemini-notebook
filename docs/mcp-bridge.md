@@ -5,9 +5,9 @@ tracks a `0.4.0` bridge that will let a trusted local agent create and populate 
 Gemini Notebook from Zotero-managed sources.
 
 > [!IMPORTANT]
-> This document describes the target architecture and the first internal
-> foundation for it. The repository does **not** yet contain an installable MCP
-> server, MCP tools, or an agent-control network endpoint.
+> This document describes the target architecture and the internal foundations
+> for it. The current configuration phase does **not** contain an installable
+> MCP adapter, MCP tools, or an agent-control network endpoint.
 
 ## Product Contract
 
@@ -42,18 +42,26 @@ of the initial source-import contract.
 The complete bridge will use four deliberately separate components:
 
 ```text
-MCP host --stdio--> local Node adapter --authenticated loopback--> Zotero plugin
-                                                                  |
-                                                                  v
-                                         paired Chrome companion --> Gemini Notebook
+MCP host --stdio--> local Python FastMCP adapter --authenticated loopback--> Zotero plugin
+                                                                            |
+                                                                            v
+                                                   paired Chrome companion --> Gemini Notebook
 ```
 
-### MCP host and local Node adapter
+### MCP host and local Python FastMCP adapter
 
-The eventual MCP adapter will be a separate local Node process using MCP's
-standard stdio transport. It will translate a small set of MCP tools into
-authenticated loopback calls. It must not be bundled into Zotero's Firefox
-runtime.
+The eventual MCP adapter will be a separate local Python process built with
+FastMCP 3.x and using MCP's standard stdio transport. It will translate a small
+set of MCP tools into authenticated loopback calls. It must run outside
+Zotero's Firefox runtime even if its files are distributed with the product.
+
+The adapter runtime will be release-owned and exact-version pinned. The adapter
+PR will select and test a specific stable FastMCP 3.x version; generated launch
+guidance must not use an unpinned `fastmcp` dependency or a floating `>=3`
+range. Its stdio launch tuple will keep the runtime executable, arguments, and
+adapter entrypoint distinct and will use absolute, stable paths. Changing the
+eventual framework pin will be a deliberate release change with adapter tests,
+not a client-side automatic upgrade.
 
 The adapter is a control plane only. MCP tool arguments and results may contain
 stable Zotero identifiers, job identifiers, sanitized counts and status, and a
@@ -226,6 +234,34 @@ remain an explicitly legacy, unscoped path. A job ID is a correlation
 identifier, not a credential. Future agent-control endpoints must not reuse
 this browser-request authorization boundary.
 
+## Configuration Foundation
+
+The current phase adds the user-facing configuration surface, not a usable MCP
+transport. The Zotero Tools menu provides **Gemini Notebook Connector** with
+separate **Export to Gemini Notebook...** and **Configure MCP...** actions. MCP
+support remains off by default.
+
+The configuration dialog may store Zotero-owned preferences, select a supported
+MCP client preset, and resolve or accept separate runtime-executable, adapter-
+entrypoint, and client-configuration locations. A later adapter phase will use
+those settings to generate setup text for the user to copy. The configuration
+foundation must not edit Codex, Claude, or another client's configuration file.
+It also does not install Python, `uv`, or FastMCP; start an adapter process;
+expose agent-control HTTP methods; or claim that an MCP client can use the
+planned tools.
+
+Client presets are configuration guidance rather than model behavior. Codex,
+Claude Desktop, and Claude Code use different configuration surfaces, so each
+future formatter will stay isolated and can be updated when a client format
+changes. Generated stdio configurations will use separate command and argument
+fields plus absolute paths. The adapter path must be stable across Zotero plugin
+updates; an unpacked, version-specific extension path is not a durable client
+target.
+
+Until the Python adapter, pairing credential, and authenticated loopback API are
+implemented and tested together, enabling the preference records intent only.
+It does not grant an external process access to Zotero data.
+
 ## Pairing and Network Security
 
 No agent-control endpoint should be exposed until pairing and authentication are
@@ -259,17 +295,21 @@ be reviewed before the next one depends on it.
 1. **Job foundation:** replace anonymous staging with the tested Zotero job
    authority, sanitized DTOs, stable-key resolution boundaries, and the narrow
    in-process API. Preserve the current human workflow.
-2. **Authenticated control:** add pairing, per-install credentials, and narrow
+2. **Configuration foundation:** add the disabled-by-default Zotero UI and
+   record client presets and locations for later copy-only setup guidance,
+   without installing an adapter or modifying external client files.
+3. **Authenticated control:** add pairing, per-install credentials, and narrow
    authenticated loopback job-control endpoints. Do not reuse wildcard browser
    CORS for these endpoints.
-3. **Chrome job identity:** extend the current fetch-and-clear job binding
+4. **Chrome job identity:** extend the current fetch-and-clear job binding
    through submission, failure, retry, and cancellation. Retain retryable state
    instead of clearing it on message delivery.
-4. **Verification:** add autonomous claiming, new-notebook creation, and source
+5. **Verification:** add autonomous claiming, new-notebook creation, and source
    list comparison so `verified` reflects visible Gemini state.
-5. **MCP adapter:** add the isolated stdio Node package and the create/status
-   tools, with cancellation only if it remains safely idempotent.
-6. **Release gates:** document setup, privacy, recovery, compatibility, and
+6. **MCP adapter:** add the isolated Python FastMCP 3.x stdio adapter and the
+   create/status tools, with an exact framework pin and cancellation only if it
+   remains safely idempotent.
+7. **Release gates:** document setup, privacy, recovery, compatibility, and
    tested versions; complete the automated and live end-to-end checks for
    `0.4.0`.
 
