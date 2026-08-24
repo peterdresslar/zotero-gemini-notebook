@@ -44,7 +44,7 @@ export function openMcpConfigDialog(parentWin: Window): void {
 
 interface DialogElements {
   enabled: HTMLInputElement;
-  clientPreset: HTMLSelectElement;
+  clientPreset: XULMenuListElement;
   runtimePath: HTMLInputElement;
   adapterPath: HTMLInputElement;
   clientConfigPath: HTMLInputElement;
@@ -93,7 +93,7 @@ function initDialog(win: Window): void {
 function getDialogElements(doc: Document): DialogElements {
   return {
     enabled: requireElement<HTMLInputElement>(doc, "mcp-enable-checkbox"),
-    clientPreset: requireElement<HTMLSelectElement>(doc, "mcp-client-select"),
+    clientPreset: requireElement<XULMenuListElement>(doc, "mcp-client-select"),
     runtimePath: requireElement<HTMLInputElement>(doc, "mcp-runtime-path"),
     adapterPath: requireElement<HTMLInputElement>(doc, "mcp-adapter-path"),
     clientConfigPath: requireElement<HTMLInputElement>(
@@ -121,16 +121,14 @@ function requireElement<T extends Element = Element>(
   return element as T;
 }
 
-function populateClientPresets(doc: Document, select: HTMLSelectElement): void {
-  select.textContent = "";
+function populateClientPresets(
+  doc: Document,
+  select: XULMenuListElement,
+): void {
+  const popup = requireElement<XULMenuPopupElement>(doc, "mcp-client-popup");
+  popup.textContent = "";
   for (const preset of MCP_CLIENT_PRESETS) {
-    const option = doc.createElementNS(
-      "http://www.w3.org/1999/xhtml",
-      "option",
-    ) as HTMLOptionElement;
-    option.value = preset.id;
-    option.textContent = preset.label;
-    select.appendChild(option);
+    select.appendItem(preset.label, preset.id);
   }
 }
 
@@ -149,7 +147,7 @@ function writeSettingsToControls(
   settings: McpSettings,
 ): void {
   elements.enabled.checked = settings.enabled;
-  elements.clientPreset.value = settings.clientPreset;
+  selectClientPreset(elements.clientPreset, settings.clientPreset);
   elements.runtimePath.value = settings.runtimePath;
   elements.adapterPath.value = settings.adapterPath;
   elements.clientConfigPath.value = settings.clientConfigPath;
@@ -159,7 +157,7 @@ function wireControls(state: DialogState): void {
   const { elements } = state;
 
   elements.enabled.addEventListener("change", () => updateDialogState(state));
-  elements.clientPreset.addEventListener("change", () =>
+  elements.clientPreset.addEventListener("command", () =>
     updateDialogState(state),
   );
   elements.runtimePath.addEventListener("input", () =>
@@ -195,7 +193,8 @@ function wireControls(state: DialogState): void {
 function readDraftSettings(elements: DialogElements): McpSettings {
   return normalizeMcpSettings({
     enabled: elements.enabled.checked,
-    clientPreset: elements.clientPreset.value,
+    clientPreset:
+      elements.clientPreset.selectedItem?.value ?? elements.clientPreset.value,
     runtimePath: elements.runtimePath.value,
     adapterPath: elements.adapterPath.value,
     clientConfigPath: elements.clientConfigPath.value,
@@ -237,18 +236,19 @@ function updateStatus(
   elements.status.classList.toggle("mcp-status-dirty", dirty);
 
   if (!settings.enabled) {
-    elements.statusTitle.textContent = "Off";
+    elements.statusTitle.textContent = dirty ? "Preferences not saved" : "Off";
     elements.statusDetail.textContent = dirty
-      ? "MCP support will be disabled after you save."
-      : "MCP support is disabled.";
+      ? "Save to keep MCP setup disabled."
+      : "No MCP setup preferences will be used.";
     return;
   }
 
   elements.statusTitle.textContent = dirty
-    ? "Changes not saved"
+    ? "Preferences not saved"
     : "Preferences saved";
-  elements.statusDetail.textContent =
-    "The external MCP adapter is not connected yet.";
+  elements.statusDetail.textContent = dirty
+    ? "Save to keep this beta setup."
+    : "Waiting for the external MCP adapter.";
 }
 
 async function browseForPath(
@@ -339,6 +339,18 @@ function settingsEqual(a: McpSettings, b: McpSettings): boolean {
     a.adapterPath === b.adapterPath &&
     a.clientConfigPath === b.clientConfigPath
   );
+}
+
+function selectClientPreset(
+  select: XULMenuListElement,
+  presetID: string,
+): void {
+  for (let index = 0; index < select.itemCount; index += 1) {
+    const item = select.getItemAtIndex(index);
+    if (item.value !== presetID) continue;
+    select.selectedItem = item;
+    return;
+  }
 }
 
 function getPathEnvironment(): McpPathEnvironment {
