@@ -4,14 +4,20 @@ import {
   getStagedCount,
   getStagedTimestamp,
   getCurrentStagedJob,
+  getStagedAttachmentAccess,
   isReady,
-  isStagedAttachment,
   claimStagedJob,
 } from "./staging";
-import { readFileAsBase64 } from "../utils/file";
+import {
+  FileReadPolicyError,
+  assertStagedFileReadPolicy,
+  readFileAsBase64,
+} from "../utils/file";
 import { getSafeFileName } from "../utils/fileName.js";
+import { getPref } from "../utils/prefs";
 import { SUPPORTED_CONTENT_TYPES } from "../utils/attachment";
 import {
+  createStatusResponse,
   PRIVATE_RESPONSE_OPTIONS,
   ZOTERO_MUTATION_METHOD,
 } from "./zoteroServerContract.js";
@@ -73,12 +79,13 @@ export function registerEndpoints() {
     supportedMethods: ["GET", "OPTIONS"],
     supportedDataTypes: ["application/json"],
     init: function (_data: any, sendResponseCallback: Function) {
-      const response: StatusResponse = {
+      const response: StatusResponse = createStatusResponse({
         ready: isReady(),
         count: getStagedCount(),
         zoteroVersion: Zotero.version,
         pluginVersion: config.addonName + " " + version,
-      };
+        mcpOptedIn: getPref("mcp.enabled") === true,
+      });
       sendJSON(sendResponseCallback, 200, response);
     },
   };
@@ -132,7 +139,8 @@ export function registerEndpoints() {
 
       try {
         // Security: only serve files that are currently staged
-        if (!isStagedAttachment(attachmentId, jobId)) {
+        const access = getStagedAttachmentAccess(attachmentId, jobId);
+        if (!access) {
           sendJSON(sendResponseCallback, 403, {
             error: "Attachment is not staged for export",
           });
@@ -163,14 +171,23 @@ export function registerEndpoints() {
           return;
         }
 
-        const base64Data = await readFileAsBase64(filePath);
+        const maxByteSize = access.maxByteSize ?? undefined;
+        const fileInfo = await IOUtils.stat(filePath);
+        assertStagedFileReadPolicy(fileInfo, maxByteSize);
+        const base64Data = await readFileAsBase64(filePath, maxByteSize);
         const response: FileResponse = {
           data: base64Data,
           contentType,
           fileName: getSafeFileName(attachment.attachmentFilename, filePath),
         };
         sendJSON(sendResponseCallback, 200, response);
-      } catch {
+      } catch (error) {
+        if (error instanceof FileReadPolicyError) {
+          sendJSON(sendResponseCallback, 409, {
+            error: "The staged attachment changed; stage it again",
+          });
+          return;
+        }
         sendJSON(sendResponseCallback, 500, {
           error: "Unable to read the staged attachment",
         });

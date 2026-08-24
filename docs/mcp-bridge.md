@@ -6,12 +6,14 @@ Gemini Notebook from Zotero-managed sources.
 
 > [!IMPORTANT]
 > This document describes the target architecture and the internal foundations
-> for it. The current configuration phase does **not** contain an installable
-> MCP adapter, MCP tools, or an agent-control network endpoint.
+> for it. The current beta contains a repository-local adapter with one
+> read-only connector-status tool and one authenticated staging tool. It does
+> **not** autonomously create a Gemini Notebook, drive Chrome, or verify an
+> import.
 
 ## Product Contract
 
-After the user explicitly configures and pairs a local agent client, that client
+After the user explicitly configures a trusted local agent client, that client
 may run an authorized notebook-import job without asking for a confirmation
 click for every transfer. This is trusted agent autonomy within the existing
 product boundary, not unrestricted access to Zotero, the filesystem, or Chrome.
@@ -21,7 +23,7 @@ The initial user-facing MCP workflow will be able to:
 1. identify a Zotero library and either a collection key or explicit item keys;
 2. ask Zotero to resolve the supported local attachments and create a job with
    a frozen attachment-record allowlist;
-3. let the paired Chrome companion create a Gemini Notebook and transfer only
+3. let the installed Chrome companion create a Gemini Notebook and transfer only
    the files authorized for that job; and
 4. query the job until the expected sources are visibly present in Gemini
    Notebook or the job reaches an honest non-success state.
@@ -45,23 +47,30 @@ The complete bridge will use four deliberately separate components:
 MCP host --stdio--> local Python FastMCP adapter --authenticated loopback--> Zotero plugin
                                                                             |
                                                                             v
-                                                   paired Chrome companion --> Gemini Notebook
+                                                installed Chrome companion --> Gemini Notebook
 ```
 
 ### MCP host and local Python FastMCP adapter
 
-The eventual MCP adapter will be a separate local Python process built with
-FastMCP 3.x and using MCP's standard stdio transport. It will translate a small
-set of MCP tools into authenticated loopback calls. It must run outside
-Zotero's Firefox runtime even if its files are distributed with the product.
+The MCP adapter is a separate local Python process built with FastMCP 3.x and
+using MCP's standard stdio transport. It runs outside Zotero's Firefox runtime
+even if its files are eventually distributed with the product.
 
-The adapter runtime will be release-owned and exact-version pinned. The adapter
-PR will select and test a specific stable FastMCP 3.x version; generated launch
-guidance must not use an unpinned `fastmcp` dependency or a floating `>=3`
-range. Its stdio launch tuple will keep the runtime executable, arguments, and
-adapter entrypoint distinct and will use absolute, stable paths. Changing the
-eventual framework pin will be a deliberate release change with adapter tests,
-not a client-side automatic upgrade.
+The checked-in adapter pins FastMCP `3.4.7` exactly and commits its complete
+`uv.lock`. `get_zotero_bridge_status` reads the existing fixed loopback status
+endpoint and returns an allowlisted diagnostic result. The first authenticated
+action, `stage_zotero_import_job`, accepts stable Zotero keys and creates only a
+bounded job in the existing Chrome handoff queue. Its result contains an opaque
+job ID, state, counts, and timestamps—not sources or paths. The opt-in result is
+not an authentication credential.
+
+The autonomous workflow tools will build on the staging preview's separately
+authenticated loopback calls. Generated launch guidance must not use an
+unpinned `fastmcp` dependency or a floating `>=3` range. Its stdio launch tuple
+will keep the runtime executable, arguments, and adapter entrypoint distinct
+and will use absolute, stable paths. Changing the framework pin will be a
+deliberate release change with adapter tests, not a client-side automatic
+upgrade.
 
 The adapter is a control plane only. MCP tool arguments and results may contain
 stable Zotero identifiers, job identifiers, sanitized counts and status, and a
@@ -80,7 +89,7 @@ ID, raw file path, or file contents as a substitute for that resolution step.
 
 ### Chrome companion
 
-Chrome is the data plane for Gemini Notebook. The paired companion claims an
+Chrome is the data plane for Gemini Notebook. The installed companion claims an
 authorized job, obtains only the files in that job's frozen allowlist, creates
 or opens the intended notebook, submits the files through Gemini's browser UI,
 and reports observations back to Zotero.
@@ -131,7 +140,7 @@ staged -> claimed -> submitted -> verifying -> verified
 | State        | Meaning                                                                                                       |
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
 | `staged`     | Zotero resolved the request and froze its supported attachment allowlist.                                     |
-| `claimed`    | The paired Chrome companion accepted responsibility for the job.                                              |
+| `claimed`    | The installed Chrome companion accepted responsibility for the job.                                           |
 | `submitted`  | Chrome handed the job's files to Gemini's uploader. Processing may still fail.                                |
 | `verifying`  | Chrome is comparing Gemini's visible source UI with the expected job sources.                                 |
 | `verified`   | Chrome observed the expected sources in the destination notebook. This is the only successful terminal state. |
@@ -184,8 +193,16 @@ one agent-controlled in-flight job as well as one pending slot. Until then,
 claimed jobs expire after one hour so repeated imports cannot retain attachment
 allowlists for the lifetime of the Zotero process.
 
-The controller will also enforce bounded source counts, byte limits, and TTLs.
-Those limits belong to the Zotero-owned job rather than to MCP transport logic.
+The first beta scans at most 256 candidate items and 1,000 collections,
+enforces at most 50 staged sources, 200,000,000 bytes per source, 200,000,000
+bytes for the complete staged batch, and a one-hour lifetime from staging. The
+source count and per-file ceiling track Google's documented free
+[Notebook and upload limits](https://support.google.com/notebooklm/answer/16215270),
+while the lower aggregate ceiling bounds the current Chrome companion's
+in-memory batch. These limits belong to the Zotero-owned job rather than to MCP
+transport logic. Each admitted per-source byte bound remains private in that
+job; the file endpoint revalidates the current regular file and caps the actual
+read so later file growth cannot bypass the staged limits.
 
 ## First Foundation PR
 
@@ -217,7 +234,7 @@ making the human UI call an MCP-shaped interface.
 This boundary is intentionally in-process. The first PR does **not** add:
 
 - an MCP package or stdio server;
-- pairing or credential storage;
+- local authorization storage;
 - a new HTTP mutation or job-control endpoint;
 - autonomous Chrome job claiming; or
 - a claim that the MCP feature can already be installed or used.
@@ -234,21 +251,24 @@ remain an explicitly legacy, unscoped path. A job ID is a correlation
 identifier, not a credential. Future agent-control endpoints must not reuse
 this browser-request authorization boundary.
 
-## Configuration Foundation
+## Configuration, Diagnostic, and Staging Preview
 
-The current phase adds the user-facing configuration surface, not a usable MCP
-transport. The Zotero Tools menu provides **Gemini Notebook Connector** with
-separate **Export to Gemini Notebook...** and **Configure MCP...** actions. MCP
-support remains off by default.
+The current phase adds the user-facing configuration surface, a narrow
+read-only MCP diagnostic, and authenticated staging. The Zotero Tools menu
+provides **Gemini Notebook Connector** with separate **Export to Gemini
+Notebook...** and **Configure MCP...** actions. MCP support remains off by
+default.
 
 The configuration dialog may store Zotero-owned preferences, select a supported
 MCP client preset, and resolve or accept separate runtime-executable, adapter-
-entrypoint, and client-configuration locations. A later adapter phase will use
-those settings to generate setup text for the user to copy. The configuration
-foundation must not edit Codex, Claude, or another client's configuration file.
-It also does not install Python, `uv`, or FastMCP; start an adapter process;
-expose agent-control HTTP methods; or claim that an MCP client can use the
-planned tools.
+entrypoint, and client-configuration locations. Saving the enabled state also
+creates or validates the private local authorization material required for the
+adapter's second hop into Zotero. That implementation detail is provisioned
+automatically and is not part of MCP client configuration. A later phase will
+generate setup text for the user to copy. The dialog must not edit Codex,
+Claude, or another client's configuration file. It also does not install
+Python, `uv`, or FastMCP; start an adapter process; or claim that staging means
+the planned notebook workflow has completed.
 
 Client presets are configuration guidance rather than model behavior. Codex,
 Claude Desktop, and Claude Code use different configuration surfaces, so each
@@ -258,17 +278,52 @@ fields plus absolute paths. The adapter path must be stable across Zotero plugin
 updates; an unpacked, version-specific extension path is not a durable client
 target.
 
-Until the Python adapter, pairing credential, and authenticated loopback API are
-implemented and tested together, enabling the preference records intent only.
-It does not grant an external process access to Zotero data.
+Enabling the preference prepares the private local authorization boundary for
+control calls. The diagnostic remains read-only, and the staging action accepts
+only stable Zotero keys and returns no source metadata. See the
+[MCP adapter beta guide](../mcp-adapter/README.md) for the current local setup
+and test commands.
 
-## Pairing and Network Security
+## Local Authorization and Network Security
 
-No agent-control endpoint should be exposed until pairing and authentication are
-implemented together. Before network exposure, the bridge must:
+MCP itself uses the standard stdio process boundary and has no pairing
+ceremony. The unusual boundary is the adapter's second hop into Zotero's
+already-running loopback server. Zotero therefore creates one private,
+mode-restricted local bridge key after the user explicitly saves MCP as enabled.
+The adapter discovers that fixed local file automatically; users do not copy,
+configure, or manage it.
 
-- require explicit local setup and a per-install credential;
-- authenticate every agent-control request;
+Control requests carry a fresh timestamp, nonce, and HMAC-SHA256 signature over
+the method, path, media type, and request-body digest. The digest remains inside
+the signed canonical value rather than appearing in Zotero's logged request
+headers. The key never crosses HTTP or MCP, and replayed nonces are rejected. A
+successful authentication check includes a domain-separated,
+request-bound response signature, so the adapter also verifies that the local
+server possesses the key. This avoids placing a reusable bearer token in
+headers that Zotero's server may record in debug logs. Zotero also rejects
+browser-originated control requests; the endpoint does not opt into CORS or
+wildcard CORS, and it suppresses control responses from debug logging. The
+current internal authentication-check request has the exact body `{}`.
+
+On POSIX systems both Zotero and the adapter require `0700` private directories
+and a `0600`, 32-byte regular key file; the adapter also rejects symlinks,
+unexpected ownership, and hard-linked files. Windows relies on the current
+user profile's inherited ACLs because POSIX mode bits are unavailable. This
+protects the local bridge from browser pages, accidental callers, and other OS
+users. It is not protection from malicious software already running as the same
+user, which can generally access that user's Zotero data directly.
+
+Missing or invalid local authorization fails closed. The configuration UI
+presents this as a generic local setup state; an explicit reset action appears
+only when recovery is needed. It never displays key material or its filesystem
+path.
+
+Every source or job-control endpoint must implement and preserve the same
+reviewed authenticated boundary. The bridge must:
+
+- require explicit local opt-in and private local authorization;
+- authenticate every agent-control request and require a request-bound server
+  proof before trusting a successful response;
 - bind to loopback and reject non-loopback access;
 - reject browser-originated requests and avoid wildcard CORS on control
   endpoints;
@@ -279,9 +334,16 @@ implemented together. Before network exposure, the bridge must:
 - avoid logging credentials, file contents, local paths, filenames, private
   library metadata, browser cookies, or Gemini page state.
 
-Future network responses must be built from explicit allowlisted DTO schemas.
+Network responses must be built from explicit allowlisted DTO schemas.
 The internal job store's defensive JSON filtering is not an authentication or
 privacy boundary for untrusted input.
+
+Zotero's server records ordinary JSON, form, and text request bodies before an
+add-on endpoint runs. The staging endpoint therefore puts no private library
+identifiers in those logged body types, headers, or query parameters. It uses a
+fixed vendor media type, a 16 KiB raw-body limit, HMAC verification over the
+exact bytes, and strict canonical parsing into an allowlisted schema only after
+verification. Future control calls must preserve that boundary.
 
 The existing human Chrome transport and any future authenticated control
 transport should remain separate enough that adding MCP does not turn a browser
@@ -298,18 +360,22 @@ be reviewed before the next one depends on it.
 2. **Configuration foundation:** add the disabled-by-default Zotero UI and
    record client presets and locations for later copy-only setup guidance,
    without installing an adapter or modifying external client files.
-3. **Authenticated control:** add pairing, per-install credentials, and narrow
-   authenticated loopback job-control endpoints. Do not reuse wildcard browser
-   CORS for these endpoints.
-4. **Chrome job identity:** extend the current fetch-and-clear job binding
+3. **Diagnostic and local-authorization foundation:** add the
+   exact-version-pinned FastMCP stdio process, one read-only status tool, and
+   automatic local bridge authorization without exposing source data or
+   mutations.
+4. **Authenticated job control:** add the first narrow authenticated staging
+   endpoint and retain the same no-browser, no-CORS, log-safe boundary for later
+   status and cancellation operations.
+5. **Chrome job identity:** extend the current fetch-and-clear job binding
    through submission, failure, retry, and cancellation. Retain retryable state
    instead of clearing it on message delivery.
-5. **Verification:** add autonomous claiming, new-notebook creation, and source
+6. **Verification:** add autonomous claiming, new-notebook creation, and source
    list comparison so `verified` reflects visible Gemini state.
-6. **MCP adapter:** add the isolated Python FastMCP 3.x stdio adapter and the
-   create/status tools, with an exact framework pin and cancellation only if it
-   remains safely idempotent.
-7. **Release gates:** document setup, privacy, recovery, compatibility, and
+7. **Workflow tools:** replace the current staging-only preview with the
+   truthful create-and-verify workflow, add job status, and add cancellation
+   only if it remains safely idempotent.
+8. **Release gates:** document setup, privacy, recovery, compatibility, and
    tested versions; complete the automated and live end-to-end checks for
    `0.4.0`.
 
@@ -326,8 +392,9 @@ be reviewed before the next one depends on it.
   superseding an unclaimed job, and protecting a claimed job.
 - Sanitization tests prove public DTOs contain no attachment bytes or local file
   paths.
-- Authentication tests, once endpoints exist, cover missing/wrong credentials,
-  browser origins, CORS behavior, TTLs, and size limits.
+- Authentication and staging-endpoint tests cover missing or wrong
+  authorization, browser origins, query rejection, replay and clock windows,
+  exact request bodies, canonical encoding, and size limits.
 - Chrome tests distinguish claimed, submitted, verifying, verified, retryable,
   and terminal failure paths.
 
@@ -335,8 +402,8 @@ be reviewed before the next one depends on it.
 
 - The existing Zotero dialog and context-menu workflows still stage and import
   supported sources through the Chrome companion.
-- A supported MCP host can create a job from both a collection key and explicit
-  item keys after pairing is implemented.
+- A supported MCP host can stage a job from both a collection key and explicit
+  item keys with `stage_zotero_import_job`.
 - Chrome can claim exactly that job, create a notebook, transfer only its
   sources, and retain useful status across expected page latency.
 - `submitted` is visible before verification, and a missing or renamed Gemini
@@ -349,6 +416,6 @@ be reviewed before the next one depends on it.
 - The complete create-to-`verified` workflow passes on the documented supported
   Zotero, macOS, and Chrome versions before `0.4.0` is released.
 
-Issue #4 is complete only when a paired MCP client can run that full workflow
+Issue #4 is complete only when a configured, trusted MCP client can run that full workflow
 and observe `verified` after the expected Gemini sources appear. The internal
 job foundation alone deliberately does not satisfy that close condition.

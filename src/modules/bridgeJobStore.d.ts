@@ -11,7 +11,7 @@ export type BridgeJobJson =
   | { [key: string]: BridgeJobJson };
 
 export interface BridgeJobActivation {
-  items: StagedItem[];
+  items: Array<StagedItem & { maxByteSize?: number }>;
   origin: string;
   source: BridgeJobJson;
   destination: BridgeJobJson;
@@ -84,6 +84,10 @@ export interface BridgeJobStore {
   getStagedCount(): number;
   isReady(): boolean;
   hasPendingAttachment(attachmentId: number, expectedJobId?: string): boolean;
+  getAttachmentAccess(
+    attachmentId: number,
+    expectedJobId?: string,
+  ): Readonly<{ maxByteSize: number | null }> | null;
   claimActive(
     expectedJobId?: string,
     selectedAttachmentIds?: number[],

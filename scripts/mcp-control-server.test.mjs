@@ -1,0 +1,164 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const controlServerSource = await readFile(
+  new globalThis.URL("../src/modules/mcpControlServer.ts", import.meta.url),
+  "utf8",
+);
+const hooksSource = await readFile(
+  new globalThis.URL("../src/hooks.ts", import.meta.url),
+  "utf8",
+);
+const jobProtocolSource = await readFile(
+  new globalThis.URL(
+    "../src/modules/mcpJobControlProtocol.js",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("registers only the two narrow authenticated local MCP control endpoints", () => {
+  assert.match(controlServerSource, /"\/notebooklm\/control\/v1\/auth-check"/u);
+  assert.match(controlServerSource, /"\/notebooklm\/control\/v1\/jobs"/u);
+  assert.match(controlServerSource, /supportedMethods: \["POST"\]/u);
+  assert.doesNotMatch(controlServerSource, /control\/v1\/info/u);
+  assert.doesNotMatch(
+    controlServerSource,
+    /supportedMethods: \[[^\]]*(?:GET|OPTIONS)/u,
+  );
+  assert.doesNotMatch(
+    controlServerSource,
+    /getStaged|claimStaged|stageSelected|control\/v1\/jobs\//u,
+  );
+});
+
+test("create-job uses a bounded raw vendor body and authenticates before parsing", () => {
+  assert.match(
+    jobProtocolSource,
+    /application\/vnd\.zotero-gemini-notebook\.job\+json/u,
+  );
+  assert.match(jobProtocolSource, /16 \* 1024/u);
+  assert.match(controlServerSource, /readInputStreamToString/u);
+  assert.match(controlServerSource, /rawBinaryStringToBytes/u);
+  assert.match(controlServerSource, /readMcpCreateJobContentLength/u);
+
+  const handlerStart = controlServerSource.indexOf(
+    "async function handleMcpControlCreateJob",
+  );
+  const handlerEnd = controlServerSource.indexOf(
+    "function validateRequestEnvelope",
+    handlerStart,
+  );
+  const handler = controlServerSource.slice(handlerStart, handlerEnd);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  assert.ok(
+    handler.indexOf("readMcpRawRequestBody") <
+      handler.indexOf("verifyMcpAuthRequest"),
+  );
+  assert.ok(
+    handler.indexOf("verifyMcpAuthRequest") <
+      handler.indexOf("parseCanonicalCreateJobBody"),
+  );
+  assert.ok(
+    handler.indexOf("parseCanonicalCreateJobBody") <
+      handler.indexOf("createJob(input)"),
+  );
+  assert.ok(
+    handler.indexOf("createMcpCreateJobSuccessBody") <
+      handler.indexOf("createMcpAuthResponseSignature"),
+  );
+});
+
+test("create-job forces non-replacement input and returns an allowlisted job DTO", () => {
+  assert.match(jobProtocolSource, /document\.replace !== false/u);
+  assert.match(jobProtocolSource, /document\.destination !== "new"/u);
+  assert.match(
+    jobProtocolSource,
+    /hasOwnProperty\.call\(document, "requestId"\)/u,
+  );
+  assert.match(jobProtocolSource, /MCP_CREATE_JOB_MAX_ITEM_KEYS = 256/u);
+  assert.match(jobProtocolSource, /jobId: job\.jobId/u);
+  assert.match(jobProtocolSource, /createdAt: job\.createdAt/u);
+  assert.match(jobProtocolSource, /updatedAt: job\.updatedAt/u);
+  assert.match(jobProtocolSource, /expiresAt: job\.expiresAt/u);
+  assert.doesNotMatch(
+    jobProtocolSource.slice(
+      jobProtocolSource.indexOf("createMcpCreateJobSuccessBody"),
+      jobProtocolSource.indexOf("export function canonicalJsonStringify"),
+    ),
+    /job\.(?:source|destination|origin|details|items|filePath)/u,
+  );
+});
+
+test("maps create-job failures only from stable typed codes to fixed DTOs", () => {
+  const mapperStart = controlServerSource.indexOf(
+    "function createJobErrorResponse",
+  );
+  const mapperEnd = controlServerSource.indexOf(
+    "function createJobProtocolErrorResponse",
+    mapperStart,
+  );
+  const mapper = controlServerSource.slice(mapperStart, mapperEnd);
+  assert.ok(mapperStart >= 0 && mapperEnd > mapperStart);
+  for (const code of [
+    "PENDING_JOB_EXISTS",
+    "IDEMPOTENCY_CONFLICT",
+    "LIBRARY_NOT_FOUND",
+    "COLLECTION_NOT_FOUND",
+    "NO_SUPPORTED_ATTACHMENTS",
+    "SOURCE_LIMIT_EXCEEDED",
+  ]) {
+    assert.match(mapper, new RegExp(`hasErrorCode\\(error, "${code}"\\)`, "u"));
+  }
+  assert.match(mapper, /status: 400,\s*code: "no_supported_attachments"/u);
+  assert.match(mapper, /status: 400,\s*code: "source_limit_exceeded"/u);
+  assert.doesNotMatch(mapper, /status: (?:413|422)/u);
+  assert.doesNotMatch(controlServerSource, /status: (?:413|422)/u);
+  assert.doesNotMatch(mapper, /error\.message|readErrorMessage/u);
+});
+
+test("keeps control responses private, uncached, and does not opt into CORS", () => {
+  assert.match(controlServerSource, /"Cache-Control": "no-store"/u);
+  assert.match(controlServerSource, /PRIVATE_RESPONSE_OPTIONS/u);
+  assert.match(
+    controlServerSource,
+    /allowRequestsFromUnsafeWebContent: false/u,
+  );
+  assert.doesNotMatch(controlServerSource, /Access-Control-Allow/u);
+});
+
+test("auth-check verifies only the fixed empty JSON request with the local key", () => {
+  assert.match(controlServerSource, /const MCP_AUTH_BODY = "\{\}"/u);
+  assert.match(
+    controlServerSource,
+    /readHeader\(request\.headers, "content-type"\) !== MCP_AUTH_CONTENT_TYPE/u,
+  );
+  assert.match(
+    controlServerSource,
+    /readHeader\(request\.headers, "content-length"\)/u,
+  );
+  assert.match(
+    controlServerSource,
+    /hasMcpQueryParameters\(request\.searchParams\)/u,
+  );
+  assert.match(controlServerSource, /readMcpLocalAuthorizationKey\(\)/u);
+  assert.match(controlServerSource, /verifyMcpAuthRequest\(\{/u);
+  assert.match(controlServerSource, /createMcpAuthResponseSignature\(\{/u);
+  assert.match(controlServerSource, /MCP_AUTH_RESPONSE_SIGNATURE_HEADER/u);
+  assert.match(controlServerSource, /createMcpAuthReplayCache\(\{/u);
+  assert.match(controlServerSource, /key\.fill\(0\)/u);
+  assert.ok(
+    controlServerSource.indexOf("createMcpAuthResponseSignature({") <
+      controlServerSource.indexOf("key.fill(0)"),
+  );
+});
+
+test("hooks register endpoints once startup is ready and remove them on shutdown", () => {
+  assert.match(hooksSource, /registerMcpControlEndpoints\(\)/u);
+  assert.match(hooksSource, /unregisterMcpControlEndpoints\(\)/u);
+  assert.ok(
+    hooksSource.indexOf("registerMcpControlEndpoints()") >
+      hooksSource.indexOf("await Promise.all"),
+  );
+});

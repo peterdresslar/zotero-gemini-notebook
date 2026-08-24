@@ -1,14 +1,15 @@
 <?xml version="1.0"?>
-<?xml-stylesheet href="chrome://zoteroNotebookLM/content/notebooklm-dialog.css"
-type="text/css"?> <?xml-stylesheet
-href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?> <?xml-stylesheet
+href="chrome://zoteroNotebookLM/content/notebooklm-dialog.css" type="text/css"?>
+<?xml-stylesheet href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css"
+type="text/css"?>
 
 <window
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   xmlns:html="http://www.w3.org/1999/xhtml"
   title="Configure MCP (Beta)"
   width="720"
-  height="650"
+  height="800"
 >
   <vbox id="mcp-config-dialog" flex="1">
     <html:header class="mcp-config-header">
@@ -17,11 +18,23 @@ href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
         <html:span class="mcp-beta-badge">Beta · v0.4.0</html:span>
       </html:div>
       <html:p>
-        MCP support enters beta in v0.4.0. This screen saves local-client setup
-        preferences only; the external adapter is not connected yet. Setup
-        remains off by default.
+        MCP support enters beta in v0.4.0. It uses a standard local stdio
+        adapter and remains off by default. The current beta exposes a read-only
+        status tool and an authenticated staging tool.
       </html:p>
     </html:header>
+
+    <html:label class="mcp-enable-row" for="mcp-enable-checkbox">
+      <html:input id="mcp-enable-checkbox" type="checkbox" />
+      <html:span>
+        <html:strong>Enable MCP support (Beta)</html:strong>
+        <html:small>
+          Allows the local adapter to stage Zotero sources after you configure
+          an MCP client. It does not install or start the adapter or modify MCP
+          client files.
+        </html:small>
+      </html:span>
+    </html:label>
 
     <html:section
       id="mcp-config-status"
@@ -31,20 +44,9 @@ href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
     >
       <html:strong id="mcp-status-title">Off</html:strong>
       <html:span id="mcp-status-detail">
-        No MCP setup preferences will be used.
+        MCP control access is disabled.
       </html:span>
     </html:section>
-
-    <html:label class="mcp-enable-row" for="mcp-enable-checkbox">
-      <html:input id="mcp-enable-checkbox" type="checkbox" />
-      <html:span>
-        <html:strong>Enable MCP setup (Beta)</html:strong>
-        <html:small>
-          Records your client and path choices. It does not install or start an
-          adapter or modify MCP client files.
-        </html:small>
-      </html:span>
-    </html:label>
 
     <html:section
       id="mcp-config-settings"
@@ -84,7 +86,7 @@ href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
           </html:button>
         </html:div>
         <html:small id="mcp-runtime-path-help" class="mcp-field-help">
-          Path to <html:code>uv</html:code> for the future external MCP adapter.
+          Path to <html:code>uv</html:code> for the external MCP adapter.
         </html:small>
       </html:div>
 
@@ -104,8 +106,8 @@ href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
           </html:button>
         </html:div>
         <html:small id="mcp-adapter-path-help" class="mcp-field-help">
-          Path to the adapter's <html:code>server.py</html:code> entrypoint. The
-          adapter is not included yet.
+          Path to the adapter's <html:code>server.py</html:code> entrypoint.
+          Zotero does not install or start it.
         </html:small>
       </html:div>
 
@@ -134,10 +136,30 @@ href="chrome://zoteroNotebookLM/content/mcp-config-dialog.css" type="text/css"?>
           Uses the usual configuration location for the selected client.
         </html:span>
       </html:div>
+
+      <html:div
+        id="mcp-local-recovery"
+        class="mcp-recovery-row"
+        role="group"
+        aria-labelledby="mcp-local-recovery-title"
+        hidden="hidden"
+      >
+        <html:span>
+          <html:strong id="mcp-local-recovery-title">Needs repair</html:strong>
+          <html:small>
+            Reset the local connection, then save this configuration again.
+          </html:small>
+        </html:span>
+        <html:button id="mcp-reset-local-connection" type="button">
+          Reset local connection
+        </html:button>
+      </html:div>
     </html:section>
 
     <html:aside class="mcp-notice" role="note">
       <html:strong>Nothing is installed or run from this dialog.</html:strong>
+      The beta adapter can stage Zotero sources for the existing Chrome handoff,
+      but it cannot create notebooks or upload sources on its own.
     </html:aside>
 
     <hbox id="mcp-config-bottom-bar" align="center">

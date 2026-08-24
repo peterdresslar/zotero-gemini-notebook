@@ -4,9 +4,23 @@ import test from "node:test";
 import {
   assertChromeRuntimePackage,
   assertUpdateManifest,
+  assertZoteroMcpRuntimePackage,
   parseUpdateHash,
   releaseContext,
 } from "./validate-release.mjs";
+
+const zoteroPackageEntries = [
+  "content/scripts/zoteroNotebookLM.js",
+  "content/mcp-config-dialog.xhtml",
+  "content/mcp-config-dialog.css",
+];
+const zoteroRuntimeBundle = [
+  "ZGN-LOCAL-AUTH-V1",
+  "/notebooklm/control/v1/auth-check",
+  "/notebooklm/control/v1/jobs",
+  "application/vnd.zotero-gemini-notebook.job+json",
+  "maxByteSize",
+].join("\n");
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
@@ -185,6 +199,27 @@ test("Chrome runtime package includes and loads the content helpers", () => {
   nodeAssert.doesNotThrow(() =>
     assertChromeRuntimePackage(chromeManifest, popupHTML, chromePackageEntries),
   );
+});
+
+test("Zotero runtime package retains the MCP staging boundary", () => {
+  nodeAssert.doesNotThrow(() =>
+    assertZoteroMcpRuntimePackage(zoteroRuntimeBundle, zoteroPackageEntries),
+  );
+
+  for (const marker of [
+    "ZGN-LOCAL-AUTH-V1",
+    "/notebooklm/control/v1/jobs",
+    "maxByteSize",
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertZoteroMcpRuntimePackage(
+          zoteroRuntimeBundle.replace(marker, ""),
+          zoteroPackageEntries,
+        ),
+      /runtime bundle must include/u,
+    );
+  }
 });
 
 test("Chrome runtime package covers current and legacy notebook hosts", () => {

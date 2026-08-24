@@ -191,19 +191,29 @@ export function createBridgeJobStore(options = {}) {
   }
 
   function hasPendingAttachment(attachmentId, expectedJobId) {
-    if (!Number.isSafeInteger(attachmentId) || attachmentId < 1) return false;
+    return getAttachmentAccess(attachmentId, expectedJobId) !== null;
+  }
+
+  function getAttachmentAccess(attachmentId, expectedJobId) {
+    if (!Number.isSafeInteger(attachmentId) || attachmentId < 1) return null;
     expireJobs(readNow(now));
 
     let job;
     if (expectedJobId === undefined) {
       job = getPendingRecord();
     } else {
-      if (!isNonemptyString(expectedJobId)) return false;
+      if (!isNonemptyString(expectedJobId)) return null;
       job = jobs.get(expectedJobId) ?? null;
     }
 
-    if (!job || !FILE_ACCESS_STATES.has(job.state)) return false;
-    return job.items.some((item) => item.attachmentId === attachmentId);
+    if (!job || !FILE_ACCESS_STATES.has(job.state)) return null;
+    const item = job.items.find(
+      (candidate) => candidate.attachmentId === attachmentId,
+    );
+    if (!item) return null;
+    return Object.freeze({
+      maxByteSize: item.maxByteSize ?? null,
+    });
   }
 
   function claimActive(expectedJobId, selectedAttachmentIds) {
@@ -373,6 +383,7 @@ export function createBridgeJobStore(options = {}) {
     getStagedCount,
     isReady,
     hasPendingAttachment,
+    getAttachmentAccess,
     claimActive,
     transition,
     cancel,
@@ -486,8 +497,16 @@ function normalizeItem(item, index) {
   if (!item.fileName) {
     throw invalidInput(`items[${index}] must include a fileName`);
   }
+  if (
+    item.maxByteSize !== undefined &&
+    (!Number.isSafeInteger(item.maxByteSize) || item.maxByteSize < 0)
+  ) {
+    throw invalidInput(
+      `items[${index}].maxByteSize must be a nonnegative safe integer when provided`,
+    );
+  }
 
-  return {
+  const normalized = {
     itemId: item.itemId,
     title: item.title,
     creators: item.creators,
@@ -496,6 +515,10 @@ function normalizeItem(item, index) {
     contentType: item.contentType,
     fileName: item.fileName,
   };
+  if (item.maxByteSize !== undefined) {
+    normalized.maxByteSize = item.maxByteSize;
+  }
+  return normalized;
 }
 
 function selectItems(items, selectedAttachmentIds) {
@@ -607,7 +630,15 @@ function snapshot(job) {
 }
 
 function cloneItems(items) {
-  return items.map((item) => ({ ...item }));
+  return items.map((item) => ({
+    itemId: item.itemId,
+    title: item.title,
+    creators: item.creators,
+    year: item.year,
+    attachmentId: item.attachmentId,
+    contentType: item.contentType,
+    fileName: item.fileName,
+  }));
 }
 
 function readNow(now) {

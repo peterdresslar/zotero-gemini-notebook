@@ -44,7 +44,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 10px;
+  margin: 0 10px 10px;
   padding: 9px 11px;
   border: 1px solid ThreeDShadow;
   border-radius: 4px;
@@ -73,7 +73,7 @@
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  margin: 0 10px 10px;
+  margin: 10px;
   padding: 10px;
   border: 1px solid ThreeDShadow;
   border-radius: 4px;
@@ -94,6 +94,7 @@
 .mcp-enable-row small,
 .mcp-field-help,
 .mcp-defaults-row span,
+.mcp-recovery-row small,
 .mcp-notice span {
   font-size: 12px;
   line-height: 1.4;
@@ -194,6 +195,32 @@
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.mcp-recovery-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background-color: Field;
+  color: FieldText;
+}
+
+.mcp-recovery-row[hidden] {
+  display: none;
+}
+
+.mcp-recovery-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mcp-recovery-row button {
+  flex-shrink: 0;
 }
 
 .mcp-notice {

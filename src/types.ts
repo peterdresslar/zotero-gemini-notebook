@@ -76,6 +76,7 @@ export interface StatusResponse {
   count: number;
   zoteroVersion: string;
   pluginVersion: string;
+  mcpOptedIn: boolean;
 }
 
 export interface FileResponse {

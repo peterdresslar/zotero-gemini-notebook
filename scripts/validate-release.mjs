@@ -28,6 +28,7 @@ const uploadTransferFilename = "upload-transfer.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
 const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
+const zoteroRuntimeBundleEntry = "content/scripts/zoteroNotebookLM.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -454,6 +455,36 @@ function assertChromeRuntimePackage(
   );
 }
 
+function assertZoteroMcpRuntimePackage(
+  bundle,
+  packageEntries,
+  description = "Zotero XPI",
+) {
+  for (const entry of [
+    zoteroRuntimeBundleEntry,
+    "content/mcp-config-dialog.xhtml",
+    "content/mcp-config-dialog.css",
+  ]) {
+    assert(
+      packageEntries.includes(entry),
+      `${description} must include ${entry}`,
+    );
+  }
+
+  for (const marker of [
+    "ZGN-LOCAL-AUTH-V1",
+    "/notebooklm/control/v1/auth-check",
+    "/notebooklm/control/v1/jobs",
+    "application/vnd.zotero-gemini-notebook.job+json",
+    "maxByteSize",
+  ]) {
+    assert(
+      bundle.includes(marker),
+      `${description} runtime bundle must include ${marker}`,
+    );
+  }
+}
+
 function parseUpdateHash(updateHash) {
   assert(
     typeof updateHash === "string",
@@ -564,14 +595,20 @@ async function validateLocalRelease(packageJSON) {
   );
   assertArchiveIntegrity(xpiPath);
   assertArchiveIntegrity(chromePath);
-  assertArchiveHygiene(xpiPath);
+  const xpiArchiveEntries = listArchiveEntries(xpiPath);
+  assertArchiveHygiene(xpiPath, xpiArchiveEntries);
   const chromeArchiveEntries = listArchiveEntries(chromePath);
   assertArchiveHygiene(chromePath, chromeArchiveEntries);
 
   const xpiManifest = readArchiveJSON(xpiPath, "manifest.json");
+  const zoteroRuntimeBundle = readArchiveEntry(
+    xpiPath,
+    zoteroRuntimeBundleEntry,
+  );
   const chromeManifest = readArchiveJSON(chromePath, "manifest.json");
   const chromePopupHTML = readArchiveEntry(chromePath, "popup.html");
   const zoteroCompatibility = assertZoteroManifest(xpiManifest, expected);
+  assertZoteroMcpRuntimePackage(zoteroRuntimeBundle, xpiArchiveEntries);
   assertChromeManifest(chromeManifest, expected);
   assertChromeRuntimePackage(
     chromeManifest,
@@ -815,6 +852,7 @@ if (
 
 export {
   assertChromeRuntimePackage,
+  assertZoteroMcpRuntimePackage,
   assertUpdateManifest,
   parseUpdateHash,
   releaseContext,

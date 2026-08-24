@@ -8,6 +8,13 @@ import {
   normalizeMcpSettings,
 } from "./mcpConfig.js";
 import type { McpPathEnvironment, McpSettings } from "./mcpConfig.js";
+import {
+  ensureMcpLocalAuthorization,
+  getMcpLocalAuthorizationStatus,
+  resetMcpLocalAuthorization,
+} from "./mcpLocalAuth";
+
+type LocalAuthorizationStatus = "checking" | "ready" | "missing" | "invalid";
 
 let dialogWindow: Window | null = null;
 
@@ -29,7 +36,7 @@ export function openMcpConfigDialog(parentWin: Window): void {
   win.addEventListener(
     "load",
     () => {
-      initDialog(win);
+      void initDialog(win);
     },
     { once: true },
   );
@@ -51,6 +58,8 @@ interface DialogElements {
   browseRuntime: HTMLButtonElement;
   browseAdapter: HTMLButtonElement;
   applyDefaults: HTMLButtonElement;
+  localRecovery: HTMLElement;
+  resetLocalConnection: HTMLButtonElement;
   settingsPanel: HTMLElement;
   status: HTMLElement;
   statusTitle: HTMLElement;
@@ -65,9 +74,13 @@ interface DialogState {
   elements: DialogElements;
   persistedSettings: McpSettings;
   environment: McpPathEnvironment;
+  localAuthorizationStatus: LocalAuthorizationStatus;
+  showRepairAfterSaveFailure: boolean;
+  saveInProgress: boolean;
+  resetInProgress: boolean;
 }
 
-function initDialog(win: Window): void {
+async function initDialog(win: Window): Promise<void> {
   try {
     const doc = win.document;
     const elements = getDialogElements(doc);
@@ -80,11 +93,16 @@ function initDialog(win: Window): void {
       elements,
       persistedSettings,
       environment: getPathEnvironment(),
+      localAuthorizationStatus: "checking",
+      showRepairAfterSaveFailure: false,
+      saveInProgress: false,
+      resetInProgress: false,
     };
 
     writeSettingsToControls(elements, persistedSettings);
     wireControls(state);
     updateDialogState(state);
+    await refreshLocalAuthorizationStatus(state);
   } catch {
     showInitializationFailure(win.document);
   }
@@ -103,6 +121,11 @@ function getDialogElements(doc: Document): DialogElements {
     browseRuntime: requireElement<HTMLButtonElement>(doc, "mcp-runtime-browse"),
     browseAdapter: requireElement<HTMLButtonElement>(doc, "mcp-adapter-browse"),
     applyDefaults: requireElement<HTMLButtonElement>(doc, "mcp-apply-defaults"),
+    localRecovery: requireElement<HTMLElement>(doc, "mcp-local-recovery"),
+    resetLocalConnection: requireElement<HTMLButtonElement>(
+      doc,
+      "mcp-reset-local-connection",
+    ),
     settingsPanel: requireElement<HTMLElement>(doc, "mcp-config-settings"),
     status: requireElement<HTMLElement>(doc, "mcp-config-status"),
     statusTitle: requireElement<HTMLElement>(doc, "mcp-status-title"),
@@ -186,7 +209,12 @@ function wireControls(state: DialogState): void {
   elements.applyDefaults.addEventListener("click", () => {
     applyClientDefaults(state);
   });
-  elements.save.addEventListener("command", () => saveSettings(state));
+  elements.resetLocalConnection.addEventListener("click", () => {
+    void resetLocalConnection(state);
+  });
+  elements.save.addEventListener("command", () => {
+    void saveSettings(state);
+  });
   elements.cancel.addEventListener("command", () => state.win.close());
 }
 
@@ -204,11 +232,9 @@ function readDraftSettings(elements: DialogElements): McpSettings {
 function updateDialogState(state: DialogState): void {
   const draft = readDraftSettings(state.elements);
   setSubordinateControlsEnabled(state.elements, draft.enabled);
-  updateStatus(
-    state.elements,
-    draft,
-    !settingsEqual(draft, state.persistedSettings),
-  );
+  const dirty = !settingsEqual(draft, state.persistedSettings);
+  updateRecoveryState(state, draft);
+  updateStatus(state, draft, dirty);
 }
 
 function setSubordinateControlsEnabled(
@@ -227,10 +253,11 @@ function setSubordinateControlsEnabled(
 }
 
 function updateStatus(
-  elements: DialogElements,
+  state: DialogState,
   settings: McpSettings,
   dirty: boolean,
 ): void {
+  const { elements } = state;
   elements.status.classList.toggle("mcp-status-off", !settings.enabled);
   elements.status.classList.toggle("mcp-status-enabled", settings.enabled);
   elements.status.classList.toggle("mcp-status-dirty", dirty);
@@ -238,17 +265,59 @@ function updateStatus(
   if (!settings.enabled) {
     elements.statusTitle.textContent = dirty ? "Preferences not saved" : "Off";
     elements.statusDetail.textContent = dirty
-      ? "Save to keep MCP setup disabled."
-      : "No MCP setup preferences will be used.";
+      ? "Save to turn off MCP access."
+      : "MCP control access is disabled.";
     return;
   }
 
-  elements.statusTitle.textContent = dirty
-    ? "Preferences not saved"
-    : "Preferences saved";
+  if (state.localAuthorizationStatus === "checking") {
+    elements.statusTitle.textContent = "Checking local setup";
+    elements.statusDetail.textContent = "Checking Zotero's local MCP setup.";
+    return;
+  }
+
+  if (localConnectionNeedsRepair(state, settings)) {
+    elements.statusTitle.textContent = "Needs repair";
+    elements.statusDetail.textContent =
+      "Reset the local connection, then save this configuration again.";
+    return;
+  }
+
+  if (
+    state.localAuthorizationStatus === "missing" ||
+    state.localAuthorizationStatus === "invalid"
+  ) {
+    elements.statusTitle.textContent = "Ready to enable";
+    elements.statusDetail.textContent =
+      "Save to prepare Zotero's local MCP setup automatically.";
+    return;
+  }
+
+  elements.statusTitle.textContent = dirty ? "Preferences not saved" : "On";
   elements.statusDetail.textContent = dirty
-    ? "Save to keep this beta setup."
-    : "Waiting for the external MCP adapter.";
+    ? "Save your changed MCP setup preferences."
+    : "Zotero's local MCP staging access is enabled. The external stdio adapter and MCP client are configured separately.";
+}
+
+function localConnectionNeedsRepair(
+  state: DialogState,
+  settings: McpSettings,
+): boolean {
+  if (!settings.enabled) return false;
+  const unavailable =
+    state.localAuthorizationStatus === "missing" ||
+    state.localAuthorizationStatus === "invalid";
+  return (
+    unavailable &&
+    (state.persistedSettings.enabled || state.showRepairAfterSaveFailure)
+  );
+}
+
+function updateRecoveryState(state: DialogState, settings: McpSettings): void {
+  const showRecovery = localConnectionNeedsRepair(state, settings);
+  state.elements.localRecovery.hidden = !showRecovery;
+  state.elements.resetLocalConnection.disabled =
+    !showRecovery || state.saveInProgress || state.resetInProgress;
 }
 
 async function browseForPath(
@@ -292,22 +361,143 @@ function applyClientDefaults(state: DialogState): void {
   updateDialogState(state);
 }
 
-function saveSettings(state: DialogState): void {
+async function saveSettings(state: DialogState): Promise<void> {
+  if (state.saveInProgress || state.resetInProgress) return;
+  state.saveInProgress = true;
+  state.elements.save.setAttribute("disabled", "true");
+  state.elements.cancel.setAttribute("disabled", "true");
+  updateDialogState(state);
+
   try {
     const settings = readDraftSettings(state.elements);
-    setPref("mcp.enabled", settings.enabled);
+    if (settings.enabled) {
+      await ensureMcpLocalAuthorization();
+      state.localAuthorizationStatus = "ready";
+      state.showRepairAfterSaveFailure = false;
+      if (!isWindowAlive(state.win)) return;
+    }
+
+    // Persist opt-out first so a later preference-write failure cannot leave
+    // MCP control active after the user asked to turn it off.
+    if (!settings.enabled) setPref("mcp.enabled", false);
+
     setPref("mcp.clientPreset", settings.clientPreset);
     setPref("mcp.runtimePath", settings.runtimePath);
     setPref("mcp.adapterPath", settings.adapterPath);
     setPref("mcp.clientConfigPath", settings.clientConfigPath);
+    // Persist opt-in last so partially written path preferences can never
+    // accidentally enable the authenticated control endpoint.
+    if (settings.enabled) setPref("mcp.enabled", true);
+
+    if (!settingsEqual(readPersistedSettings(), settings)) {
+      throw new Error("MCP preferences were not persisted.");
+    }
     state.win.close();
   } catch {
+    // Any incomplete save fails closed. Existing local connection state is
+    // retained until the user explicitly chooses the recovery action.
+    let disabledConfirmed = false;
+    try {
+      setPref("mcp.enabled", false);
+      disabledConfirmed = getPref("mcp.enabled") === false;
+      state.persistedSettings = readPersistedSettings();
+      state.showRepairAfterSaveFailure = state.elements.enabled.checked;
+    } catch {
+      // The status message below remains the only user-visible error detail.
+    }
+    try {
+      await refreshLocalAuthorizationStatus(state);
+    } catch {
+      // Keep the error copy generic and do not expose internal details.
+    }
     showTransientStatus(
       state.elements,
       "Could not save configuration",
-      "No credentials, endpoints, commands, or client files were changed.",
+      disabledConfirmed
+        ? "MCP access was disabled because the preferences were not fully saved."
+        : "Could not confirm that MCP access was disabled. Reopen Configure MCP and verify the setting.",
     );
+  } finally {
+    state.saveInProgress = false;
+    if (isWindowAlive(state.win)) {
+      state.elements.save.removeAttribute("disabled");
+      state.elements.cancel.removeAttribute("disabled");
+      updateRecoveryState(state, readDraftSettings(state.elements));
+    }
   }
+}
+
+async function resetLocalConnection(state: DialogState): Promise<void> {
+  if (state.saveInProgress || state.resetInProgress) return;
+  const settings = readDraftSettings(state.elements);
+  if (!localConnectionNeedsRepair(state, settings)) return;
+
+  const confirmed = state.win.confirm(
+    "Reset the local MCP connection? You will need to save this configuration again.",
+  );
+  if (!confirmed) return;
+
+  state.resetInProgress = true;
+  state.elements.save.setAttribute("disabled", "true");
+  state.elements.cancel.setAttribute("disabled", "true");
+  updateDialogState(state);
+  showTransientStatus(
+    state.elements,
+    "Resetting local connection",
+    "Preparing a new local connection.",
+  );
+
+  let disabledConfirmed = false;
+  try {
+    // Recovery changes the shared local key. Disable control access first and
+    // require an explicit Save before the replacement becomes active.
+    setPref("mcp.enabled", false);
+    disabledConfirmed = getPref("mcp.enabled") === false;
+    if (!disabledConfirmed) {
+      throw new Error("MCP access was not disabled before recovery.");
+    }
+    state.persistedSettings = readPersistedSettings();
+
+    await resetMcpLocalAuthorization();
+    await ensureMcpLocalAuthorization();
+    if (!isWindowAlive(state.win)) return;
+
+    state.localAuthorizationStatus = "ready";
+    state.showRepairAfterSaveFailure = false;
+    updateDialogState(state);
+  } catch {
+    state.showRepairAfterSaveFailure = true;
+    try {
+      await refreshLocalAuthorizationStatus(state);
+    } catch {
+      state.localAuthorizationStatus = "invalid";
+    }
+    if (!isWindowAlive(state.win)) return;
+    showTransientStatus(
+      state.elements,
+      "Could not reset local connection",
+      disabledConfirmed
+        ? "MCP access remains disabled, and the local setup is still unavailable. Try again or reopen Configure MCP."
+        : "Could not confirm that MCP access was disabled. Reopen Configure MCP and verify the setting.",
+    );
+  } finally {
+    state.resetInProgress = false;
+    if (isWindowAlive(state.win)) {
+      state.elements.save.removeAttribute("disabled");
+      state.elements.cancel.removeAttribute("disabled");
+      updateRecoveryState(state, readDraftSettings(state.elements));
+    }
+  }
+}
+
+async function refreshLocalAuthorizationStatus(
+  state: DialogState,
+): Promise<void> {
+  const status = await getMcpLocalAuthorizationStatus();
+  if (!isWindowAlive(state.win)) return;
+
+  state.localAuthorizationStatus = status.status;
+  updateDialogState(state);
 }
 
 function showTransientStatus(

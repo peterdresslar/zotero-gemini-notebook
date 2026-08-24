@@ -1,7 +1,13 @@
 import { initLocale, getString } from "./utils/locale";
+import { getPref } from "./utils/prefs";
 import { registerEndpoints } from "./modules/server";
+import {
+  registerMcpControlEndpoints,
+  unregisterMcpControlEndpoints,
+} from "./modules/mcpControlServer";
 import { openExportDialog } from "./modules/dialog";
 import { openMcpConfigDialog } from "./modules/mcpConfigDialog";
+import { ensureMcpLocalAuthorization } from "./modules/mcpLocalAuth";
 import { resetStaging } from "./modules/staging";
 import {
   createConnectorToolsMenu,
@@ -45,8 +51,19 @@ async function onStartup() {
     );
   }
 
-  // Register HTTP endpoints for Chrome extension communication
+  // Register browser-facing endpoints for Chrome extension communication.
   registerEndpoints();
+
+  if (getPref("mcp.enabled") === true) {
+    try {
+      await ensureMcpLocalAuthorization();
+    } catch {
+      Zotero.debug("[NotebookLM] Local MCP authorization is unavailable");
+    }
+  }
+
+  // Keep authenticated MCP control endpoints on their separate loopback boundary.
+  registerMcpControlEndpoints();
 
   await Promise.all(
     Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
@@ -145,6 +162,7 @@ async function onMainWindowUnload(win: Window): Promise<void> {
 }
 
 function onShutdown(): void {
+  unregisterMcpControlEndpoints();
   stagingActionsInProgress.clear();
   cleanupManagedToolsMenu?.();
   cleanupManagedToolsMenu = null;

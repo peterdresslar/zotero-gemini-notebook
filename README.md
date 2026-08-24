@@ -31,11 +31,12 @@ Zotero, pick your sources, and push them to Gemini Notebook.
 
 The system has two parts:
 
-1. **Zotero Plugin** — Adds an "Export to Gemini Notebook" dialog to Zotero's
-   Tools menu. Browse your collection tree, search/filter items, and select
-   which sources to stage. The plugin registers endpoints on Zotero's local
-   HTTP server. The Chrome companion connects through `127.0.0.1`, and file
-   requests are rejected unless the attachment was explicitly staged.
+1. **Zotero Plugin** — Adds a **Gemini Notebook Connector** submenu to Zotero's
+   Tools menu, with separate export and MCP configuration actions. Browse your
+   collection tree, search/filter items, and select which sources to stage. The
+   plugin registers endpoints on Zotero's local HTTP server. The Chrome
+   companion connects through `127.0.0.1`, and file requests are rejected unless
+   the attachment was explicitly staged.
 
 2. **Chrome Extension** — Connects to the Zotero plugin's local server, fetches
    the staged files, and uploads them into Gemini Notebook. Google Chrome is
@@ -137,7 +138,8 @@ selection leaves that batch intact.
 
 For collection browsing, searching, or more deliberate selection:
 
-1. Open Zotero and go to **Tools → Export to Gemini Notebook...**
+1. Open Zotero and go to **Tools → Gemini Notebook Connector → Export to Gemini
+   Notebook...**
 2. Browse the collection tree on the left to find your subcollection
 3. Use the search box to filter items by title, author, or year
 4. Click items to select them (checked items will be exported). Items without a
@@ -185,8 +187,13 @@ Maintainers should follow the
 [release and auto-update checklist](docs/releasing.md) before publishing a new
 version.
 
-The planned agent/MCP bridge is not installable yet. Its trust boundary, job
-model, and phased `0.4.0` roadmap are documented in
+The in-development MCP beta includes a repository-local stdio adapter with a
+read-only connector-status tool and an authenticated staging tool for early
+testing. The staging tool can resolve stable Zotero collection or item keys
+into the same bounded handoff queue used by the existing workflow. It does not
+create a Gemini Notebook or upload sources: the user must still complete the
+handoff from the Chrome companion. See the
+[adapter testing guide](mcp-adapter/README.md) and
 [MCP Bridge Architecture](docs/mcp-bridge.md).
 
 ## Known Issues

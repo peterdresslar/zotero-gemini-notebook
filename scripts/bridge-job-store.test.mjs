@@ -182,6 +182,25 @@ test("activates one staged job and exposes defensive pending-item copies", () =>
   assert.equal(store.getPendingItems()[0].title, "Source 1");
 });
 
+test("retains private file-read bounds without exposing them in pending DTOs", () => {
+  const { store } = createHarness();
+  const bounded = { ...stagedItem(1), maxByteSize: 1234 };
+  const created = store.activate(activation({ items: [bounded] }));
+
+  assert.deepEqual(store.getAttachmentAccess(101, created.jobId), {
+    maxByteSize: 1234,
+  });
+  assert.deepEqual(store.getPendingItems(), [stagedItem(1)]);
+  assert.equal("maxByteSize" in store.getPendingItems()[0], false);
+  assert.equal(JSON.stringify(created).includes("maxByteSize"), false);
+
+  store.claimActive(created.jobId);
+  assert.deepEqual(store.getAttachmentAccess(101, created.jobId), {
+    maxByteSize: 1234,
+  });
+  assert.equal(store.getAttachmentAccess(101), null);
+});
+
 test("sanitizes every public snapshot without exposing items or file paths", () => {
   const { store } = createHarness();
   const created = store.activate(
