@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CONNECTOR_TOOLS_MENU_IDS,
   createConnectorToolsMenu,
+  registerConnectorToolsMenuWithManager,
 } from "../src/modules/toolsMenu.js";
 
 const XUL_NAMESPACE =
@@ -132,4 +133,96 @@ test("builds the connector submenu entirely from XUL elements", () => {
 test("uses the exact XUL namespace when createXULElement is unavailable", () => {
   const { menu } = buildMenu(createDocumentWithNamespaceFallback());
   assertMenuStructure(menu);
+});
+
+test("registers the native Tools submenu through Zotero MenuManager", () => {
+  const registeredMenuID = "plugin@example.com-zotero-notebooklm-tools";
+  const registrations = [];
+  const unregistrations = [];
+  const menuManager = {
+    registerMenu(options) {
+      registrations.push(options);
+      return registeredMenuID;
+    },
+    unregisterMenu(menuID) {
+      unregistrations.push(menuID);
+      return true;
+    },
+  };
+  const ownerWindow = { name: "main-window" };
+  const labels = [];
+  const context = {
+    menuElem: {
+      ownerGlobal: ownerWindow,
+      setAttribute(name, value) {
+        labels.push([name, value]);
+      },
+    },
+  };
+  const exportWindows = [];
+  const configureMcpWindows = [];
+
+  const cleanup = registerConnectorToolsMenuWithManager(menuManager, {
+    pluginID: "plugin@example.com",
+    connectorLabel: "Gemini Notebook Connector",
+    exportLabel: "Export to Gemini Notebook...",
+    configureMcpLabel: "Configure MCP...",
+    onExport: (win) => exportWindows.push(win),
+    onConfigureMcp: (win) => configureMcpWindows.push(win),
+  });
+
+  assert.equal(typeof cleanup, "function");
+  assert.equal(registrations.length, 1);
+  const registration = registrations[0];
+  assert.equal(registration.menuID, CONNECTOR_TOOLS_MENU_IDS.registration);
+  assert.equal(registration.pluginID, "plugin@example.com");
+  assert.equal(registration.target, "main/menubar/tools");
+
+  const [submenu] = registration.menus;
+  const [exportItem, configureMcpItem] = submenu.menus;
+  assert.deepEqual(
+    [submenu.menuType, exportItem.menuType, configureMcpItem.menuType],
+    ["submenu", "menuitem", "menuitem"],
+  );
+
+  submenu.onShowing({}, context);
+  exportItem.onShowing({}, context);
+  configureMcpItem.onShowing({}, context);
+  assert.deepEqual(labels, [
+    ["label", "Gemini Notebook Connector"],
+    ["label", "Export to Gemini Notebook..."],
+    ["label", "Configure MCP..."],
+  ]);
+
+  exportItem.onCommand({}, context);
+  configureMcpItem.onCommand({}, context);
+  assert.deepEqual(exportWindows, [ownerWindow]);
+  assert.deepEqual(configureMcpWindows, [ownerWindow]);
+
+  cleanup();
+  cleanup();
+  assert.deepEqual(unregistrations, [registeredMenuID]);
+});
+
+test("falls back when Zotero MenuManager is unavailable or rejects registration", () => {
+  const options = {
+    pluginID: "plugin@example.com",
+    connectorLabel: "Gemini Notebook Connector",
+    exportLabel: "Export to Gemini Notebook...",
+    configureMcpLabel: "Configure MCP...",
+    onExport: () => {},
+    onConfigureMcp: () => {},
+  };
+
+  assert.equal(registerConnectorToolsMenuWithManager(undefined, options), null);
+  assert.equal(
+    registerConnectorToolsMenuWithManager(
+      {
+        registerMenu: () => false,
+        unregisterMenu: () => true,
+      },
+      options,
+    ),
+    null,
+  );
 });

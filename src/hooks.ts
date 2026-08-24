@@ -3,7 +3,10 @@ import { registerEndpoints } from "./modules/server";
 import { openExportDialog } from "./modules/dialog";
 import { openMcpConfigDialog } from "./modules/mcpConfigDialog";
 import { resetStaging } from "./modules/staging";
-import { createConnectorToolsMenu } from "./modules/toolsMenu.js";
+import {
+  createConnectorToolsMenu,
+  registerConnectorToolsMenuWithManager,
+} from "./modules/toolsMenu.js";
 import {
   showStagingFailure,
   stageSelectedZoteroItems,
@@ -11,6 +14,7 @@ import {
 
 const windowUICleanups = new Map<Window, () => void>();
 const stagingActionsInProgress = new Set<Window>();
+let cleanupManagedToolsMenu: (() => void) | null = null;
 
 async function onStartup() {
   await Promise.all([
@@ -20,6 +24,26 @@ async function onStartup() {
   ]);
 
   initLocale();
+
+  cleanupManagedToolsMenu?.();
+  try {
+    cleanupManagedToolsMenu = registerConnectorToolsMenuWithManager(
+      Zotero.MenuManager,
+      {
+        pluginID: addon.data.config.addonID,
+        connectorLabel: getString("menu-connector-label"),
+        exportLabel: getString("menuitem-export-label"),
+        configureMcpLabel: getString("menuitem-configure-mcp-label"),
+        onExport: openExportDialog,
+        onConfigureMcp: openMcpConfigDialog,
+      },
+    );
+  } catch {
+    cleanupManagedToolsMenu = null;
+    Zotero.debug(
+      "[NotebookLM] Native Tools menu registration failed; using the per-window fallback",
+    );
+  }
 
   // Register HTTP endpoints for Chrome extension communication
   registerEndpoints();
@@ -45,8 +69,10 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
 
 function registerToolsMenu(win: _ZoteroTypes.MainWindow): () => void {
   // Zotero.MenuManager starts in Zotero 8, while this add-on still supports
-  // Zotero 7. Inject the submenu into each main window and remove it with that
-  // window's cleanup callback.
+  // Zotero 7. Use the supported manager when available and retain the direct
+  // per-window XUL path only as the Zotero 7 fallback.
+  if (cleanupManagedToolsMenu) return () => {};
+
   const toolsPopup = win.document.getElementById("menu_ToolsPopup");
   if (!toolsPopup) return () => {};
 
@@ -120,6 +146,8 @@ async function onMainWindowUnload(win: Window): Promise<void> {
 
 function onShutdown(): void {
   stagingActionsInProgress.clear();
+  cleanupManagedToolsMenu?.();
+  cleanupManagedToolsMenu = null;
   for (const cleanup of windowUICleanups.values()) cleanup();
   windowUICleanups.clear();
   ztoolkit.unregisterAll();
