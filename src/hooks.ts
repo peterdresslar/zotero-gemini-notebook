@@ -3,6 +3,7 @@ import { registerEndpoints } from "./modules/server";
 import { openExportDialog } from "./modules/dialog";
 import { openMcpConfigDialog } from "./modules/mcpConfigDialog";
 import { resetStaging } from "./modules/staging";
+import { createConnectorToolsMenu } from "./modules/toolsMenu.js";
 import {
   showStagingFailure,
   stageSelectedZoteroItems,
@@ -49,50 +50,13 @@ function registerToolsMenu(win: _ZoteroTypes.MainWindow): () => void {
   const toolsPopup = win.document.getElementById("menu_ToolsPopup");
   if (!toolsPopup) return () => {};
 
-  const connectorMenu = ztoolkit.UI.createElement(win.document, "menu", {
-    tag: "menu",
-    id: "zotero-notebooklm-menu-connector",
-    attributes: {
-      label: getString("menu-connector-label"),
-    },
+  const connectorMenu = createConnectorToolsMenu(win.document, {
+    connectorLabel: getString("menu-connector-label"),
+    exportLabel: getString("menuitem-export-label"),
+    configureMcpLabel: getString("menuitem-configure-mcp-label"),
+    onExport: () => openExportDialog(win),
+    onConfigureMcp: () => openMcpConfigDialog(win),
   });
-  const connectorPopup = ztoolkit.UI.createElement(win.document, "menupopup", {
-    tag: "menupopup",
-    id: "zotero-notebooklm-menu-connector-popup",
-  });
-  const exportMenuItem = ztoolkit.UI.createElement(win.document, "menuitem", {
-    tag: "menuitem",
-    id: "zotero-notebooklm-menu-export",
-    attributes: {
-      label: getString("menuitem-export-label"),
-    },
-    listeners: [
-      {
-        type: "command",
-        listener: () => openExportDialog(win),
-      },
-    ],
-  });
-  const configureMcpMenuItem = ztoolkit.UI.createElement(
-    win.document,
-    "menuitem",
-    {
-      tag: "menuitem",
-      id: "zotero-notebooklm-menu-configure-mcp",
-      attributes: {
-        label: getString("menuitem-configure-mcp-label"),
-      },
-      listeners: [
-        {
-          type: "command",
-          listener: () => openMcpConfigDialog(win),
-        },
-      ],
-    },
-  );
-
-  connectorPopup.append(exportMenuItem, configureMcpMenuItem);
-  connectorMenu.appendChild(connectorPopup);
   toolsPopup.appendChild(connectorMenu);
 
   return () => connectorMenu.remove();
