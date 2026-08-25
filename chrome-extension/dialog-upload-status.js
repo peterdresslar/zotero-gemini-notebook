@@ -39,7 +39,8 @@
       action === "upload-files"
         ? "Now processing files: please don't leave this window. If you are stuck, try pressing the Upload files button."
         : "Click the highlighted Add sources button to open the upload dialog.";
-    return `${fileCount} ${noun} ready from Zotero. ${instruction}`;
+    const message = `${fileCount} ${noun} ready from Zotero. ${instruction}`;
+    return action === "upload-files" ? `Zotero Connector: ${message}` : message;
   }
 
   function isActiveDialog(element, view) {
