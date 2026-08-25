@@ -120,10 +120,13 @@ An explicit item request uses `"item_keys":["ABCD1234","EFGH5678"]`
 instead of `collection_key`. Reuse a request ID only for the exact same
 normalized request; a retry then returns the existing job. A different request
 with the same ID is rejected. A successful result means only that Zotero staged
-the job. Confirm the count in the Chrome companion, click **Import**, and verify
-the sources in Gemini Notebook. The companion reports `submitted` only after
-Gemini's uploader accepts the file injection; that state does not mean the
-sources have finished processing or passed visible-source verification.
+the job. Agent-staged jobs require a new destination: open Gemini Notebook's
+home page before clicking **Import**. If an existing notebook is open, the
+companion refuses the import before fetching attachment bytes. Confirm the
+count in the Chrome companion, click **Import**, and verify the sources in the
+new notebook. The companion reports `submitted` only after it hands the files
+to Gemini's uploader; that state does not mean the uploader accepted every
+source, processing finished, or visible-source verification passed.
 After reloading an updated unpacked companion, refresh any already-open Gemini
 Notebook tab before importing so its content script uses the same lifecycle
 protocol version.

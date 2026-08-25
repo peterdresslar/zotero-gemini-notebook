@@ -40,6 +40,8 @@ export type BridgeJobState =
   | "expired"
   | "superseded";
 
+export type ChromeUploadDestination = "new" | "active-or-new";
+
 interface CreateBridgeJobBase {
   libraryID: number;
   destination: "new";
@@ -69,6 +71,7 @@ export interface PendingResponse {
   timestamp: number | null;
   compatibleChromeExtensionVersions: string[];
   jobId: string | null;
+  destination: ChromeUploadDestination | null;
 }
 
 export interface StatusResponse {

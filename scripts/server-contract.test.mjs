@@ -6,6 +6,7 @@ import { STAGED_CLEAR_METHOD } from "../chrome-extension/bridge-requests.js";
 import {
   createStatusResponse,
   PRIVATE_RESPONSE_OPTIONS,
+  readPendingDestination,
   ZOTERO_MUTATION_METHOD,
 } from "../src/modules/zoteroServerContract.js";
 
@@ -57,6 +58,27 @@ test("builds an allowlisted status response with strict MCP opt-in", () => {
       false,
     );
   }
+});
+
+test("exposes only the two Chrome upload destinations", () => {
+  assert.equal(readPendingDestination({ destination: "new" }), "new");
+  assert.equal(
+    readPendingDestination({ destination: "active-or-new" }),
+    "active-or-new",
+  );
+  for (const activeJob of [
+    null,
+    undefined,
+    {},
+    { destination: "existing" },
+    { destination: { type: "private" } },
+  ]) {
+    assert.equal(readPendingDestination(activeJob), null);
+  }
+  assert.match(
+    serverSource,
+    /destination: readPendingDestination\(activeJob\)/u,
+  );
 });
 
 test("filters private endpoint bodies from Zotero debug logging", () => {

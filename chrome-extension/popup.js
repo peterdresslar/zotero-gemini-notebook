@@ -19,6 +19,8 @@ const ZOTERO_JSON_HEADERS = {
   "Content-Type": "application/json",
 };
 const { splitBase64IntoChunks } = globalThis.ZoteroUploadTransfer;
+const { readDestination, requestPreparedDestination } =
+  globalThis.ZoteroUploadDestination;
 const { PROTOCOL_VERSION: JOB_LIFECYCLE_PROTOCOL_VERSION } =
   globalThis.ZoteroUploadHandoff;
 
@@ -26,6 +28,7 @@ let stagedItems = [];
 let selectedIds = new Set();
 let companionCompatible = false;
 let stagedJobId = null;
+let stagedDestination = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   loadPending();
@@ -42,6 +45,7 @@ async function loadPending() {
 
   companionCompatible = false;
   stagedJobId = null;
+  stagedDestination = null;
   updateImportBtn();
 
   try {
@@ -68,6 +72,7 @@ async function loadPending() {
     stagedItems = data.items || [];
     stagedJobId =
       typeof data.jobId === "string" && data.jobId ? data.jobId : null;
+    stagedDestination = stagedJobId ? readDestination(data.destination) : null;
     selectedIds = new Set(stagedItems.map((i) => i.attachmentId));
 
     if (stagedItems.length === 0) {
@@ -87,6 +92,7 @@ async function loadPending() {
     companionCompatible = false;
     stagedItems = [];
     stagedJobId = null;
+    stagedDestination = null;
     selectedIds.clear();
     dot.className = "status-dot error";
     statusText.textContent = "Cannot reach Zotero — is it running?";
@@ -240,18 +246,47 @@ async function doImport() {
     return;
   }
 
+  let preparedDestination;
+  try {
+    preparedDestination = await requestPreparedDestination({
+      jobId,
+      destination: stagedDestination,
+      sendMessage: (message) => chrome.tabs.sendMessage(tab.id, message),
+    });
+  } catch (error) {
+    progressText.textContent =
+      error instanceof Error
+        ? error.message
+        : "Gemini Notebook could not prepare the import destination.";
+    progressFill.style.width = "0%";
+    if (jobId && stagedDestination === "new") {
+      btn.disabled = true;
+      btn.textContent = "Open Gemini Notebook home first";
+    } else {
+      btn.disabled = false;
+      btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+    }
+    return;
+  }
+
   const batchId = globalThis.crypto.randomUUID();
   let batchStarted = false;
   let batchCommitted = false;
 
   try {
-    await sendUploadTransferMessage(tab.id, {
+    const beginMessage = {
       action: "uploadBatchBegin",
       batchId,
       jobId,
       attachmentIds: toImport.map((item) => item.attachmentId),
       fileCount: toImport.length,
-    });
+    };
+    if (preparedDestination) {
+      beginMessage.createdNewNotebook = preparedDestination.createdNewNotebook;
+      beginMessage.destination = preparedDestination.destination;
+      beginMessage.notebookPathname = preparedDestination.notebookPathname;
+    }
+    await sendUploadTransferMessage(tab.id, beginMessage);
     batchStarted = true;
 
     for (let i = 0; i < toImport.length; i++) {
@@ -324,9 +359,14 @@ async function doImport() {
     }
     if (batchCommitted) {
       progressText.textContent =
-        "Files were handed to Gemini Notebook, but Zotero could not clear the staged job. Close this popup and check Gemini Notebook before staging or retrying.";
+        "Files were handed to Gemini Notebook's uploader, but Zotero could not clear the staged job. Close this popup and check Gemini Notebook before staging or retrying.";
       btn.disabled = true;
       btn.textContent = "Check Gemini Notebook";
+    } else if (jobId && preparedDestination?.createdNewNotebook === true) {
+      progressText.textContent =
+        "The new notebook was created, but the one-time staged import did not start safely. Check the notebook, then return to Gemini Notebook home before starting another import.";
+      btn.disabled = true;
+      btn.textContent = "Open Gemini Notebook home first";
     } else {
       progressText.textContent = `Error uploading to Gemini Notebook: ${e.message}`;
       btn.disabled = false;

@@ -6,6 +6,10 @@
 (() => {
   console.log("[Zotero injector] Main-world script loaded");
 
+  const attemptApi = globalThis.ZoteroInjectorAttempt;
+  const attemptController = attemptApi.createController({
+    getCurrentUrl: () => window.location.href,
+  });
   let pendingFiles = null;
   let interceptedInput = null;
   let fileInputObserver = null;
@@ -38,9 +42,13 @@
 
   HTMLInputElement.prototype.click = function () {
     if (this.type === "file" && pendingFiles) {
+      const current = requireCurrentAttempt(
+        attemptController.getBinding()?.attemptNonce,
+      );
+      if (!current) return;
       console.log("[Zotero injector] Intercepted file-input .click()");
       interceptedInput = this;
-      doInject();
+      doInject(current.attemptNonce);
       return; // swallow — no native picker
     }
     return originalClick.apply(this, arguments);
@@ -50,9 +58,13 @@
   if (typeof originalShowPicker === "function") {
     HTMLInputElement.prototype.showPicker = function () {
       if (this.type === "file" && pendingFiles) {
+        const current = requireCurrentAttempt(
+          attemptController.getBinding()?.attemptNonce,
+        );
+        if (!current) return;
         console.log("[Zotero injector] Intercepted file-input .showPicker()");
         interceptedInput = this;
-        doInject();
+        doInject(current.attemptNonce);
         return;
       }
       return originalShowPicker.apply(this, arguments);
@@ -67,23 +79,25 @@
   if (originalShowOpenFilePicker) {
     window.showOpenFilePicker = async function () {
       if (pendingFiles) {
+        const current = requireCurrentAttempt(
+          attemptController.getBinding()?.attemptNonce,
+        );
+        if (!current) {
+          throw new Error(attemptApi.ATTEMPT_MISMATCH_ERROR);
+        }
         console.log(
           "[Zotero injector] Intercepted window.showOpenFilePicker()",
         );
         try {
           const handles = pendingFiles.map(createFileHandle);
-          stopWatchingForFileInputs();
-          pendingFiles = null;
-          interceptedInput = null;
-          reply(true);
+          clearPendingAttempt();
+          reply(true, null, current.attemptNonce);
           return handles;
-        } catch (err) {
-          console.error("[Zotero injector] Error creating file handles:", err);
-          stopWatchingForFileInputs();
-          pendingFiles = null;
-          interceptedInput = null;
-          reply(false, err.message);
-          throw err;
+        } catch {
+          console.error("[Zotero injector] Could not create file handles");
+          clearPendingAttempt();
+          reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
+          throw new Error(attemptApi.INJECTOR_FAILURE_ERROR);
         }
       }
 
@@ -97,23 +111,51 @@
     if (e.source !== window) return;
     if (!e.data || e.data.type !== "__zotero_to_injector") return;
 
-    const { command, files, reason, selector } = e.data;
+    const { attemptNonce, command, files, notebookPathname, reason, selector } =
+      e.data;
 
     if (command === "arm") {
+      if (!Array.isArray(files) || files.length === 0) {
+        postStatus(
+          "armed",
+          { success: false, error: attemptApi.INJECTOR_FAILURE_ERROR },
+          attemptApi.readAttemptNonce(attemptNonce),
+        );
+        return;
+      }
+      const binding = attemptController.arm({
+        attemptNonce,
+        notebookPathname,
+      });
+      if (!binding) {
+        postStatus(
+          "armed",
+          { success: false, error: attemptApi.ATTEMPT_MISMATCH_ERROR },
+          attemptApi.readAttemptNonce(attemptNonce),
+        );
+        return;
+      }
       pendingFiles = files;
       interceptedInput = null;
-      watchForFileInputs();
+      watchForFileInputs(binding.attemptNonce);
       console.log(
         "[Zotero injector] Armed with " + (files ? files.length : 0) + " files",
       );
-      window.postMessage(
-        { type: "__zotero_from_injector", status: "armed" },
-        "*",
-      );
+      postStatus("armed", { success: true }, binding.attemptNonce);
+      return;
+    }
+
+    if (command === "disarm") {
+      if (attemptController.matches(attemptNonce)) {
+        clearPendingAttempt();
+        postStatus("disarmed", { success: true }, attemptNonce);
+      }
       return;
     }
 
     if (command === "inject-existing") {
+      const current = requireCurrentAttempt(attemptNonce);
+      if (!current) return;
       const input = findCandidateFileInput();
       const found = Boolean(input && pendingFiles);
       console.log(
@@ -122,74 +164,71 @@
           "): " +
           (found ? "found file input" : "no file input found"),
       );
-      window.postMessage(
-        {
-          type: "__zotero_from_injector",
-          status: "inject-existing",
-          found,
-          reason: reason || null,
-        },
-        "*",
+      postStatus(
+        "inject-existing",
+        { found, reason: reason || null },
+        current.attemptNonce,
       );
       if (found) {
         interceptedInput = input;
-        doInject();
+        doInject(current.attemptNonce);
       }
       return;
     }
 
     if (command === "drop-files") {
+      const current = requireCurrentAttempt(attemptNonce);
+      if (!current) return;
       const target = findCandidateDropTarget();
       const found = Boolean(target && pendingFiles);
       console.log(
         "[Zotero injector] Drop probe (" +
           (reason || "unknown") +
           "): " +
-          (found ? describeElement(target) : "no drop target found"),
+          (found ? "found drop target" : "no drop target found"),
       );
-      window.postMessage(
+      postStatus(
+        "drop-files",
         {
-          type: "__zotero_from_injector",
-          status: "drop-files",
           found,
           reason: reason || null,
-          target: target ? describeElement(target) : null,
         },
-        "*",
+        current.attemptNonce,
       );
       if (found) {
-        doDrop(target);
+        doDrop(target, current.attemptNonce);
       }
       return;
     }
 
     if (command === "activate-trigger") {
+      const current = requireCurrentAttempt(attemptNonce);
+      if (!current) return;
       const trigger = selector
         ? findElementBySelector(selector) || findCandidateUploadTrigger()
         : findCandidateUploadTrigger();
       const found = Boolean(trigger && pendingFiles);
       let invoked = 0;
       if (found) {
-        invoked = activateUploadTrigger(trigger);
+        invoked = activateUploadTrigger(trigger, current.attemptNonce);
+        if (invoked === null) return;
       }
       console.log(
         "[Zotero injector] Upload trigger activation (" +
           (reason || "unknown") +
           "): " +
-          (found ? describeElement(trigger) : "no trigger found") +
+          (found ? "found upload trigger" : "no trigger found") +
           ", listeners=" +
           invoked,
       );
-      window.postMessage(
+      postStatus(
+        "activate-trigger",
         {
-          type: "__zotero_from_injector",
-          status: "activate-trigger",
           found,
           reason: reason || null,
-          target: trigger ? describeElement(trigger) : null,
           listeners: invoked,
         },
-        "*",
+        current.attemptNonce,
       );
       return;
     }
@@ -197,25 +236,23 @@
 
   // --- Phase 3: Inject files into the captured input ---
 
-  function doInject() {
+  function doInject(attemptNonce) {
+    const current = requireCurrentAttempt(attemptNonce);
+    if (!current) return;
     const input = interceptedInput;
     const files = pendingFiles;
 
     if (!input || !files || files.length === 0) {
-      stopWatchingForFileInputs();
-      pendingFiles = null;
-      interceptedInput = null;
+      clearPendingAttempt();
       console.error(
         "[Zotero injector] doInject called but missing input or files",
       );
-      reply(false, "Missing file input or file data");
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
       return;
     }
 
     // Reset state so we don't re-intercept on future clicks
-    stopWatchingForFileInputs();
-    pendingFiles = null;
-    interceptedInput = null;
+    clearPendingAttempt();
 
     try {
       const dt = createDataTransfer(files);
@@ -226,67 +263,112 @@
       input.dispatchEvent(new Event("change", { bubbles: true }));
 
       console.log("[Zotero injector] Injected " + dt.files.length + " file(s)");
-      reply(true);
-    } catch (err) {
-      console.error("[Zotero injector] Error:", err);
-      reply(false, err.message);
+      reply(true, null, current.attemptNonce);
+    } catch {
+      console.error("[Zotero injector] File injection failed");
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
     }
   }
 
-  function doDrop(target) {
+  function doDrop(target, attemptNonce) {
+    const current = requireCurrentAttempt(attemptNonce);
+    if (!current) return;
     const files = pendingFiles;
 
     if (!target || !files || files.length === 0) {
       console.error(
         "[Zotero injector] doDrop called but missing target or files",
       );
+      clearPendingAttempt();
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
       return;
     }
 
     try {
       const dt = createDataTransfer(files);
-      const invoked =
-        dispatchDragEvent(target, "dragenter", dt) +
-        dispatchDragEvent(target, "dragover", dt) +
-        dispatchDragEvent(target, "drop", dt);
+      let invoked = 0;
+      for (const type of ["dragenter", "dragover", "drop"]) {
+        if (!requireCurrentAttempt(current.attemptNonce)) return;
+        invoked += dispatchDragEvent(target, type, dt);
+      }
 
+      clearPendingAttempt();
       console.log(
         "[Zotero injector] Dropped " +
           dt.files.length +
-          " file(s) on " +
-          describeElement(target) +
-          ", listeners=" +
+          " file(s), listeners=" +
           invoked,
       );
-    } catch (err) {
-      console.error("[Zotero injector] Drop error:", err);
+      reply(true, null, current.attemptNonce);
+    } catch {
+      console.error("[Zotero injector] File drop failed");
+      clearPendingAttempt();
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
     }
   }
 
-  function activateUploadTrigger(target) {
+  function activateUploadTrigger(target, attemptNonce) {
     let invoked = 0;
-    invoked += dispatchTrustedMouseEvent(target, "pointerdown");
-    invoked += dispatchTrustedMouseEvent(target, "mousedown");
-    invoked += dispatchTrustedMouseEvent(target, "pointerup");
-    invoked += dispatchTrustedMouseEvent(target, "mouseup");
-    invoked += dispatchTrustedMouseEvent(target, "click");
+    for (const type of [
+      "pointerdown",
+      "mousedown",
+      "pointerup",
+      "mouseup",
+      "click",
+    ]) {
+      if (!requireCurrentAttempt(attemptNonce)) return null;
+      invoked += dispatchTrustedMouseEvent(target, type);
+    }
     return invoked;
   }
 
-  function reply(success, error) {
+  function clearPendingAttempt() {
+    stopWatchingForFileInputs();
+    pendingFiles = null;
+    interceptedInput = null;
+    attemptController.clear();
+  }
+
+  function requireCurrentAttempt(attemptNonce) {
+    const checked = attemptController.check(attemptNonce);
+    if (checked.ok) return checked;
+    if (checked.currentAttempt) clearPendingAttempt();
+    reply(false, attemptApi.ATTEMPT_MISMATCH_ERROR, checked.attemptNonce);
+    return null;
+  }
+
+  function postStatus(status, fields, attemptNonce) {
     window.postMessage(
-      { type: "__zotero_from_injector", success, error: error || null },
+      {
+        type: "__zotero_from_injector",
+        status,
+        attemptNonce: attemptNonce ?? null,
+        ...fields,
+      },
       "*",
     );
   }
 
-  function watchForFileInputs() {
+  function reply(success, error, attemptNonce) {
+    window.postMessage(
+      {
+        type: "__zotero_from_injector",
+        attemptNonce: attemptNonce ?? null,
+        success,
+        error: error || null,
+      },
+      "*",
+    );
+  }
+
+  function watchForFileInputs(attemptNonce) {
     stopWatchingForFileInputs();
 
     if (!document.documentElement) return;
 
     fileInputObserver = new MutationObserver((records) => {
       if (!pendingFiles || interceptedInput) return;
+      if (!requireCurrentAttempt(attemptNonce)) return;
 
       for (const record of records) {
         for (const node of record.addedNodes) {
@@ -299,7 +381,7 @@
               console.log(
                 "[Zotero injector] Injecting into observed file input",
               );
-              doInject();
+              doInject(attemptNonce);
             }
           });
           return;
@@ -323,6 +405,7 @@
         stopWatchingForFileInputs();
         return;
       }
+      if (!requireCurrentAttempt(attemptNonce)) return;
 
       const input = findCandidateFileInput();
       if (!input) {
@@ -344,7 +427,7 @@
           "ms",
       );
       interceptedInput = input;
-      doInject();
+      doInject(attemptNonce);
     }, 500);
   }
 
@@ -744,24 +827,5 @@
         return value;
       },
     });
-  }
-
-  function describeElement(el) {
-    const tag = el.tagName.toLowerCase();
-    const id = el.id ? "#" + el.id : "";
-    const classes =
-      typeof el.className === "string" && el.className
-        ? "." + el.className.trim().replace(/\s+/g, ".")
-        : "";
-    const role = el.getAttribute("role")
-      ? '[role="' + el.getAttribute("role") + '"]'
-      : "";
-    const label = el.getAttribute("aria-label")
-      ? '[aria-label="' + el.getAttribute("aria-label") + '"]'
-      : "";
-    const text = normalizeText(el.textContent || "").slice(0, 80);
-    return (
-      tag + id + classes + role + label + (text ? ' text="' + text + '"' : "")
-    );
   }
 })();

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const PROTOCOL_VERSION = 1;
+  const PROTOCOL_VERSION = 2;
   const DEFAULT_EXPIRY_MS = 5 * 60 * 1000;
   const MAX_ATTACHMENTS = 50;
   const JOB_ID_PATTERN =
@@ -12,6 +12,7 @@
     const createBatch = options.createBatch;
     const claimJob = options.claimJob;
     const startUpload = options.startUpload;
+    const verifyDestination = options.verifyDestination;
     const isAuthorizedSender = options.isAuthorizedSender;
     const schedule = options.setTimeout ?? globalThis.setTimeout;
     const cancelSchedule = options.clearTimeout ?? globalThis.clearTimeout;
@@ -21,6 +22,7 @@
       typeof createBatch !== "function" ||
       typeof claimJob !== "function" ||
       typeof startUpload !== "function" ||
+      typeof verifyDestination !== "function" ||
       typeof isAuthorizedSender !== "function" ||
       typeof schedule !== "function" ||
       typeof cancelSchedule !== "function" ||
@@ -87,6 +89,18 @@
       scheduleHeldExpiry();
 
       if (job) {
+        let destinationMatches;
+        try {
+          destinationMatches = verifyDestination(job);
+        } catch {
+          destinationMatches = false;
+        }
+        if (destinationMatches !== true) {
+          if (held === claimedBatch) clearHeld();
+          throw new Error(
+            "Gemini Notebook changed destinations before Zotero could claim the import job",
+          );
+        }
         try {
           await claimJob(job);
         } catch {
@@ -208,10 +222,20 @@
     ) {
       throw new TypeError("Upload attachment selection is invalid");
     }
+    const destinationBinding =
+      globalThis.ZoteroUploadDestination.readDestinationBinding(
+        message.destination,
+        message.notebookPathname,
+        message.createdNewNotebook,
+      );
+    if (!destinationBinding) {
+      throw new TypeError("Upload destination binding is invalid");
+    }
 
     return Object.freeze({
       attachmentIds: Object.freeze([...message.attachmentIds]),
       claimId: message.batchId,
+      ...destinationBinding,
       jobId: message.jobId,
     });
   }

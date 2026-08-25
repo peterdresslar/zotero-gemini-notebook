@@ -25,6 +25,8 @@ const stablePackageName = "zotero-gemini-notebook";
 const legacyRepository = "peterdresslar/zotero-notebooklm";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
+const destinationFilename = "destination.js";
+const injectorAttemptFilename = "injector-attempt.js";
 const uploadHandoffFilename = "upload-handoff.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
 const bridgeRequestsFilename = "bridge-requests.js";
@@ -335,6 +337,8 @@ function assertChromeRuntimePackage(
   ];
   const requiredRuntimeFilenames = [
     uploadTransferFilename,
+    destinationFilename,
+    injectorAttemptFilename,
     uploadHandoffFilename,
     dialogUploadStatusFilename,
     bridgeRequestsFilename,
@@ -391,6 +395,10 @@ function assertChromeRuntimePackage(
   );
   const contentScriptIndex = contentScript.js.indexOf("content.js");
   const transferScriptIndex = contentScript.js.indexOf(uploadTransferFilename);
+  const destinationScriptIndex = contentScript.js.indexOf(destinationFilename);
+  const injectorAttemptScriptIndex = contentScript.js.indexOf(
+    injectorAttemptFilename,
+  );
   const handoffScriptIndex = contentScript.js.indexOf(uploadHandoffFilename);
   const dialogStatusScriptIndex = contentScript.js.indexOf(
     dialogUploadStatusFilename,
@@ -407,6 +415,14 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${uploadTransferFilename} before content.js`,
   );
   assert(
+    destinationScriptIndex !== -1,
+    `${description} manifest must load ${destinationFilename} with content.js`,
+  );
+  assert(
+    injectorAttemptScriptIndex !== -1,
+    `${description} manifest must load ${injectorAttemptFilename} with content.js`,
+  );
+  assert(
     handoffScriptIndex !== -1,
     `${description} manifest must load ${uploadHandoffFilename} with content.js`,
   );
@@ -419,12 +435,16 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${geminiControlsFilename} with content.js`,
   );
   assert(
-    transferScriptIndex < handoffScriptIndex &&
+    transferScriptIndex < destinationScriptIndex &&
+      destinationScriptIndex < injectorAttemptScriptIndex &&
+      injectorAttemptScriptIndex < handoffScriptIndex &&
       handoffScriptIndex < dialogStatusScriptIndex &&
       dialogStatusScriptIndex < geminiControlsScriptIndex &&
       geminiControlsScriptIndex < contentScriptIndex,
     `${description} manifest must load ${uploadTransferFilename}, ` +
-      `${uploadHandoffFilename}, ${dialogUploadStatusFilename}, ` +
+      `${destinationFilename}, ${injectorAttemptFilename}, ` +
+      `${uploadHandoffFilename}, ` +
+      `${dialogUploadStatusFilename}, ` +
       `${geminiControlsFilename}, and content.js ` +
       "in that order",
   );
@@ -445,6 +465,15 @@ function assertChromeRuntimePackage(
   assert(
     injectorScript.world === "MAIN",
     `${description} manifest must load injector.js in the MAIN world`,
+  );
+  const mainWorldAttemptIndex = injectorScript.js.indexOf(
+    injectorAttemptFilename,
+  );
+  const mainWorldInjectorIndex = injectorScript.js.indexOf("injector.js");
+  assert(
+    mainWorldAttemptIndex !== -1 &&
+      mainWorldAttemptIndex < mainWorldInjectorIndex,
+    `${description} manifest must load ${injectorAttemptFilename} before injector.js in the MAIN world`,
   );
   for (const hostPattern of notebookHostPatterns) {
     assert(
@@ -470,6 +499,9 @@ function assertChromeRuntimePackage(
   const popupTransferIndex = scriptTags.findIndex(
     ({ source }) => source === uploadTransferFilename,
   );
+  const popupDestinationIndex = scriptTags.findIndex(
+    ({ source }) => source === destinationFilename,
+  );
   const popupDialogStatusIndex = scriptTags.findIndex(
     ({ source }) => source === dialogUploadStatusFilename,
   );
@@ -488,6 +520,16 @@ function assertChromeRuntimePackage(
   assert(
     popupTransferIndex < popupScriptIndex,
     `${description} popup.html must load ${uploadTransferFilename} before popup.js`,
+  );
+  assert(
+    popupDestinationIndex !== -1,
+    `${description} popup.html must load ${destinationFilename}`,
+  );
+  assert(
+    popupTransferIndex < popupDestinationIndex &&
+      popupDestinationIndex < popupScriptIndex,
+    `${description} popup.html must load ${uploadTransferFilename}, ` +
+      `${destinationFilename}, and popup.js in that order`,
   );
   assert(
     popupDialogStatusIndex === -1,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { shouldUseLegacyPopupClear } from "../chrome-extension/bridge-requests.js";
+import "../chrome-extension/destination.js";
 import "../chrome-extension/upload-handoff.js";
 
 import {
@@ -12,6 +13,7 @@ import {
   JOB_LIFECYCLE_ACTION,
   JOB_LIFECYCLE_CONTENT_TYPE,
   JOB_LIFECYCLE_ENDPOINT,
+  JOB_LIFECYCLE_REPORT_WARNING,
   createJobClaimBody,
   createJobLifecycleBody,
   isAllowedJobClaimSender,
@@ -46,6 +48,14 @@ test("creates the exact canonical claim and lifecycle bodies", () => {
     createJobLifecycleBody(JOB_ID, CLAIM_ID, "submitted"),
     `{"claimId":"${CLAIM_ID}","event":"submitted","jobId":"${JOB_ID}"}`,
   );
+});
+
+test("describes submitted as uploader handoff rather than acceptance", () => {
+  assert.match(
+    JOB_LIFECYCLE_REPORT_WARNING,
+    /handed the files to Gemini Notebook's uploader/u,
+  );
+  assert.doesNotMatch(JOB_LIFECYCLE_REPORT_WARNING, /received the files/u);
 });
 
 test("accepts only the exact internal message schemas", () => {
@@ -347,6 +357,14 @@ test("handoff validates begin atomically and rejects stale popup senders", () =>
     /job identifier/,
   );
   assert.throws(
+    () =>
+      harness.controller.begin(
+        beginMessage({ notebookPathname: "/notebook/bad/path" }),
+        POPUP_SENDER,
+      ),
+    /destination binding/,
+  );
+  assert.throws(
     () => harness.controller.addChunk(chunkMessage(), POPUP_SENDER),
     /No upload batch/,
   );
@@ -370,6 +388,10 @@ test("handoff validates begin atomically and rejects stale popup senders", () =>
 test("claim acknowledgement precedes exactly one upload", async () => {
   const order = [];
   const harness = createHandoffHarness({
+    verifyDestination: (job) => {
+      order.push(`destination:${job.notebookPathname}`);
+      return true;
+    },
     claimJob: async (job) => {
       order.push(`claim:${job.claimId}`);
     },
@@ -391,7 +413,29 @@ test("claim acknowledgement precedes exactly one upload", async () => {
     /No upload batch/,
   );
 
-  assert.deepEqual(order, [`claim:${CLAIM_ID}`, "upload"]);
+  assert.deepEqual(order, [
+    "destination:/notebook/prepared-notebook",
+    `claim:${CLAIM_ID}`,
+    "upload",
+  ]);
+});
+
+test("destination mismatch discards bytes before claim", async () => {
+  const harness = createHandoffHarness({ verifyDestination: () => false });
+  harness.controller.begin(beginMessage(), POPUP_SENDER);
+  harness.controller.addChunk(chunkMessage(), POPUP_SENDER);
+
+  await assert.rejects(
+    harness.controller.commit(CLAIM_ID, POPUP_SENDER),
+    /changed destinations before Zotero could claim/,
+  );
+  assert.equal(harness.claims.length, 0);
+  assert.equal(harness.uploads.length, 0);
+
+  harness.controller.begin(
+    beginMessage({ batchId: "replacement-claim" }),
+    POPUP_SENDER,
+  );
 });
 
 test("claim rejection and cancellation discard held bytes without upload", async () => {
@@ -445,10 +489,10 @@ test("legacy null-job handoff skips claim and retains popup-only clear", async (
   assert.equal(harness.uploads[0].job, null);
   assert.equal(shouldUseLegacyPopupClear(null), true);
   assert.equal(shouldUseLegacyPopupClear(JOB_ID), false);
-  assert.equal(PROTOCOL_VERSION, 1);
+  assert.equal(PROTOCOL_VERSION, 2);
   assert.deepEqual(createPingResponse(), {
     ready: true,
-    lifecycleProtocolVersion: 1,
+    lifecycleProtocolVersion: 2,
   });
 });
 
@@ -495,6 +539,7 @@ function createHandoffHarness(overrides = {}) {
         uploads.push(upload);
         upload.complete();
       }),
+    verifyDestination: overrides.verifyDestination ?? (() => true),
     isAuthorizedSender: (sender) =>
       isAllowedPopupSender({
         sender,
@@ -519,6 +564,9 @@ function beginMessage(overrides = {}) {
     fileCount: 1,
     jobId: JOB_ID,
     attachmentIds: [10],
+    createdNewNotebook: true,
+    destination: "new",
+    notebookPathname: "/notebook/prepared-notebook",
     ...overrides,
   };
 }

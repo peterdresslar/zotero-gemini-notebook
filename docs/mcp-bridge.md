@@ -388,8 +388,8 @@ be reviewed before the next one depends on it.
    claimant-bound browser handoff and record `submitted`, `unverified`, or
    `failed` without equating injection with verification. Upload retry and
    cancellation semantics remain follow-up work.
-6. **Verification:** add autonomous claiming, new-notebook creation, and source
-   list comparison so `verified` reflects visible Gemini state.
+6. **Verification:** bind agent jobs to a connector-created new notebook, then
+   add source-list comparison so `verified` reflects visible Gemini state.
 7. **Workflow tools:** replace the current staging-and-status preview with the
    truthful create-and-verify workflow, and add cancellation only if it remains
    safely idempotent.

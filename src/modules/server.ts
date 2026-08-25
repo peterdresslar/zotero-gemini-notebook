@@ -19,6 +19,7 @@ import { SUPPORTED_CONTENT_TYPES } from "../utils/attachment";
 import {
   createStatusResponse,
   PRIVATE_RESPONSE_OPTIONS,
+  readPendingDestination,
   ZOTERO_MUTATION_METHOD,
 } from "./zoteroServerContract.js";
 import type { StatusResponse, PendingResponse, FileResponse } from "../types";
@@ -104,6 +105,7 @@ export function registerEndpoints() {
         timestamp: getStagedTimestamp(),
         compatibleChromeExtensionVersions: companionCompatibility.validVersions,
         jobId: activeJob?.jobId ?? null,
+        destination: readPendingDestination(activeJob),
       };
       sendJSON(sendResponseCallback, 200, response);
     },

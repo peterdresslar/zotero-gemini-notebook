@@ -68,6 +68,8 @@ const chromeManifest = {
       ],
       js: [
         "upload-transfer.js",
+        "destination.js",
+        "injector-attempt.js",
         "upload-handoff.js",
         "dialog-upload-status.js",
         "gemini-controls.js",
@@ -79,7 +81,7 @@ const chromeManifest = {
         "https://notebook.google.com/*",
         "https://notebooklm.google.com/*",
       ],
-      js: ["injector.js"],
+      js: ["injector-attempt.js", "injector.js"],
       world: "MAIN",
     },
   ],
@@ -88,12 +90,15 @@ const chromeManifest = {
 const popupHTML = `
   <!doctype html>
   <script src="upload-transfer.js"></script>
+  <script src="destination.js"></script>
   <script type="module" src="popup.js"></script>
 `;
 
 const chromePackageEntries = [
   "manifest.json",
   "upload-transfer.js",
+  "destination.js",
+  "injector-attempt.js",
   "upload-handoff.js",
   "dialog-upload-status.js",
   "bridge-requests.js",
@@ -324,6 +329,8 @@ test("Chrome lifecycle retains only the fixed host and messaging boundary", () =
 test("Chrome runtime package rejects missing content helpers", () => {
   for (const helperFilename of [
     "upload-transfer.js",
+    "destination.js",
+    "injector-attempt.js",
     "upload-handoff.js",
     "dialog-upload-status.js",
     "bridge-requests.js",
@@ -445,7 +452,13 @@ test("Chrome content script loads its helpers before content.js", () => {
           content_scripts: [
             {
               ...chromeManifest.content_scripts[0],
-              js: ["upload-transfer.js", "upload-handoff.js", "content.js"],
+              js: [
+                "upload-transfer.js",
+                "destination.js",
+                "injector-attempt.js",
+                "upload-handoff.js",
+                "content.js",
+              ],
             },
           ],
         },
@@ -464,6 +477,8 @@ test("Chrome content script loads its helpers before content.js", () => {
               ...chromeManifest.content_scripts[0],
               js: [
                 "upload-transfer.js",
+                "destination.js",
+                "injector-attempt.js",
                 "dialog-upload-status.js",
                 "gemini-controls.js",
                 "content.js",
@@ -487,6 +502,8 @@ test("Chrome content script loads its helpers before content.js", () => {
               js: [
                 "dialog-upload-status.js",
                 "upload-transfer.js",
+                "destination.js",
+                "injector-attempt.js",
                 "upload-handoff.js",
                 "gemini-controls.js",
                 "content.js",
@@ -497,7 +514,7 @@ test("Chrome content script loads its helpers before content.js", () => {
         popupHTML,
         chromePackageEntries,
       ),
-    /upload-transfer\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+    /upload-transfer\.js, destination\.js, injector-attempt\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
   );
   nodeAssert.throws(
     () =>
@@ -509,6 +526,8 @@ test("Chrome content script loads its helpers before content.js", () => {
               ...chromeManifest.content_scripts[0],
               js: [
                 "upload-transfer.js",
+                "destination.js",
+                "injector-attempt.js",
                 "upload-handoff.js",
                 "dialog-upload-status.js",
                 "content.js",
@@ -531,6 +550,8 @@ test("Chrome content script loads its helpers before content.js", () => {
               ...chromeManifest.content_scripts[0],
               js: [
                 "upload-transfer.js",
+                "destination.js",
+                "injector-attempt.js",
                 "upload-handoff.js",
                 "dialog-upload-status.js",
                 "content.js",
@@ -542,7 +563,115 @@ test("Chrome content script loads its helpers before content.js", () => {
         popupHTML,
         chromePackageEntries,
       ),
-    /upload-transfer\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+    /upload-transfer\.js, destination\.js, injector-attempt\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+  );
+});
+
+test("Chrome destination helper is packaged and loaded before handoff", () => {
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        popupHTML,
+        chromePackageEntries.filter((entry) => entry !== "destination.js"),
+      ),
+    /must include destination\.js/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: chromeManifest.content_scripts[0].js.filter(
+                (entry) => entry !== "destination.js",
+              ),
+            },
+            chromeManifest.content_scripts[1],
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load destination\.js with content\.js/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: [
+                "upload-transfer.js",
+                "upload-handoff.js",
+                "destination.js",
+                "injector-attempt.js",
+                "dialog-upload-status.js",
+                "gemini-controls.js",
+                "content.js",
+              ],
+            },
+            chromeManifest.content_scripts[1],
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /upload-transfer\.js, destination\.js, injector-attempt\.js, upload-handoff\.js/u,
+  );
+});
+
+test("Chrome injector attempt guard is loaded in both execution worlds", () => {
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        popupHTML,
+        chromePackageEntries.filter((entry) => entry !== "injector-attempt.js"),
+      ),
+    /must include injector-attempt\.js/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: chromeManifest.content_scripts[0].js.filter(
+                (entry) => entry !== "injector-attempt.js",
+              ),
+            },
+            chromeManifest.content_scripts[1],
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load injector-attempt\.js with content\.js/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            chromeManifest.content_scripts[0],
+            {
+              ...chromeManifest.content_scripts[1],
+              js: ["injector.js", "injector-attempt.js"],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load injector-attempt\.js before injector\.js in the MAIN world/u,
   );
 });
 
@@ -586,6 +715,32 @@ test("Chrome popup loads the transfer helper before module popup.js", () => {
         chromeManifest,
         `
           <script src="upload-transfer.js"></script>
+          <script type="module" src="popup.js"></script>
+        `,
+        chromePackageEntries,
+      ),
+    /popup\.html must load destination\.js/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        `
+          <script src="destination.js"></script>
+          <script src="upload-transfer.js"></script>
+          <script type="module" src="popup.js"></script>
+        `,
+        chromePackageEntries,
+      ),
+    /upload-transfer\.js, destination\.js, and popup\.js in that order/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        `
+          <script src="upload-transfer.js"></script>
+          <script src="destination.js"></script>
           <script src="dialog-upload-status.js"></script>
           <script type="module" src="popup.js"></script>
         `,

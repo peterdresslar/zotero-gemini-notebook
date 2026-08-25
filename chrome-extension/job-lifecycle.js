@@ -12,7 +12,7 @@ export const JOB_CLAIM_MAX_BODY_BYTES = 4096;
 export const JOB_CONTROL_TIMEOUT_MS = 5000;
 export const JOB_CONTROL_MAX_ATTEMPTS = 2;
 export const JOB_LIFECYCLE_REPORT_WARNING =
-  "Gemini Notebook received the files, but Zotero could not update the import status.";
+  "Chrome handed the files to Gemini Notebook's uploader, but Zotero could not update the import status.";
 
 const JOB_LIFECYCLE_EVENTS = new Set(["submitted", "unverified", "failed"]);
 const JOB_ID_PATTERN =

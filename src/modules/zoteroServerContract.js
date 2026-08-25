@@ -16,6 +16,13 @@ export function createStatusResponse({
   });
 }
 
+export function readPendingDestination(activeJob) {
+  const destination = activeJob?.destination;
+  return destination === "new" || destination === "active-or-new"
+    ? destination
+    : null;
+}
+
 export const PRIVATE_RESPONSE_OPTIONS = Object.freeze({
   logFilter: () => "[Zotero Gemini Notebook response omitted]",
 });
