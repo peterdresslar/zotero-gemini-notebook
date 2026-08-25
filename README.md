@@ -155,8 +155,11 @@ For collection browsing, searching, or more deliberate selection:
 2. Click the Zotero → Gemini Notebook extension icon in your Chrome toolbar
 3. The popup will show your staged sources with a green "Zotero connected" indicator
 4. Click **Import to Gemini Notebook**
-5. The extension will fetch each file from Zotero, then upload them all to
-   Gemini Notebook's sources panel.
+5. If the page highlights **Add sources** or **Upload files**, click that
+   Gemini Notebook button once. Chrome requires a genuine page click before
+   Gemini can expose its file input; you do not need to choose the files.
+6. The extension will fetch each file from Zotero, then hand them to Gemini
+   Notebook's sources panel.
 
 ### Tips
 
@@ -165,8 +168,9 @@ For collection browsing, searching, or more deliberate selection:
 - You can deselect items in the Chrome popup if you change your mind
 - After a successful import, staged items are automatically cleared
 - Keep the Gemini Notebook tab open until the import starts.
-- If the import does not start, use **Add sources** in Gemini Notebook to open the
-  file dialog, then click **Upload files**.
+- If the extension highlights **Add sources** or **Upload files**, click the
+  highlighted button once and leave the Gemini Notebook tab open. The extension
+  supplies the staged files after that trusted click.
 - If the import fails, refresh the Gemini Notebook tab and try again.
 
 ## Development

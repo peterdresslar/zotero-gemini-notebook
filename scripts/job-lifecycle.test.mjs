@@ -490,19 +490,21 @@ test("legacy null-job handoff skips claim and retains popup-only clear", async (
   assert.equal(harness.uploads[0].job, null);
   assert.equal(shouldUseLegacyPopupClear(null), true);
   assert.equal(shouldUseLegacyPopupClear(JOB_ID), false);
-  assert.equal(PROTOCOL_VERSION, 3);
+  assert.equal(PROTOCOL_VERSION, 4);
   assert.deepEqual(createPingResponse(), {
     ready: true,
-    lifecycleProtocolVersion: 3,
+    lifecycleProtocolVersion: 4,
   });
   assert.equal(isCompatiblePingResponse(createPingResponse()), true);
-  assert.equal(
-    isCompatiblePingResponse({
-      ready: true,
-      lifecycleProtocolVersion: 2,
-    }),
-    false,
-  );
+  for (const lifecycleProtocolVersion of [2, 3, 5, null]) {
+    assert.equal(
+      isCompatiblePingResponse({
+        ready: true,
+        lifecycleProtocolVersion,
+      }),
+      false,
+    );
+  }
 });
 
 test("popup sender validation requires the exact extension popup", () => {

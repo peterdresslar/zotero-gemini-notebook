@@ -23,6 +23,11 @@ or `failed` in Zotero. The read-only status tool does not return source
 metadata, files, browser claim identifiers, or notebook URLs. Autonomous Chrome
 wake-up, retries, and visible-source verification remain future work.
 
+Gemini Notebook may require one genuine page click before it exposes its file
+input. When the companion highlights **Add sources** or **Upload files**, click
+that button once; do not select local files yourself. The armed companion then
+supplies only the staged job files.
+
 ## Set up the locked environment
 
 Install [`uv`](https://docs.astral.sh/uv/), then run from the repository root:
@@ -123,10 +128,11 @@ with the same ID is rejected. A successful result means only that Zotero staged
 the job. Agent-staged jobs require a new destination: open Gemini Notebook's
 home page before clicking **Import**. If an existing notebook is open, the
 companion refuses the import before fetching attachment bytes. Confirm the
-count in the Chrome companion, click **Import**, and verify the sources in the
-new notebook. The companion reports `submitted` only after it hands the files
-to Gemini's uploader; that state does not mean the uploader accepted every
-source, processing finished, or visible-source verification passed.
+count in the Chrome companion, click **Import**, complete any highlighted
+one-click page action, and verify the sources in the new notebook. The companion
+reports `submitted` only after it hands the files to Gemini's uploader; that
+state does not mean the uploader accepted every source, processing finished, or
+visible-source verification passed.
 After reloading an updated unpacked companion, refresh any already-open Gemini
 Notebook tab before importing so its content script uses the same lifecycle
 protocol version.

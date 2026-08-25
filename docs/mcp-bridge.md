@@ -11,7 +11,9 @@ Gemini Notebook from Zotero-managed sources.
 > authenticated read-only job-status tool. It does **not** autonomously wake
 > Chrome or create and verify a Gemini Notebook. After the user starts the
 > Chrome import, the development companion records the claimant-bound handoff
-> state for the status tool to observe.
+> state for the status tool to observe. The current browser path may also
+> require one highlighted page click before Chrome lets Gemini expose its file
+> input.
 
 ## Product Contract
 

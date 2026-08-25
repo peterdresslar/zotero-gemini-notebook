@@ -149,12 +149,8 @@ const UPLOAD_CONTROL_LABELS = [
   "browse files",
   "browse",
 ];
-const UPLOAD_TRIGGER_MARKER = "data-zotero-upload-trigger";
 const PAGE_NOTICE_ID = "zotero-notebooklm-page-notice";
 const UPLOAD_TIMEOUT_MS = 120000;
-const DELAYED_UPLOAD_TRIGGER_DELAYS_MS = [
-  2500, 10000, 30000, 45000, 60000, 90000,
-];
 const UPLOAD_TIMEOUT_ERROR_CODE = "zotero-upload-timeout";
 let assistedClickCleanup = null;
 
@@ -308,17 +304,25 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
     // Add sources input/picker path for both job-bound and legacy imports.
 
     // Step 5: Open the add-sources UI if the persistent upload paths did not work.
-    const dialog = await ensureAddSourcesDialog(() => uploadFinished);
+    const dialog = await ensureAddSourcesDialog({
+      fileCount: files.length,
+      isFinished: () => uploadFinished,
+    });
     if (uploadFinished || !dialog) {
       await resultPromise;
       await sleep(3000);
       return;
     }
 
-    // Step 6: Find visible upload controls in the dialog.
-    const uploadControls = findUploadFileControls(dialog);
-    if (uploadControls.length === 0) {
-      throw new Error("Could not find an upload-files control");
+    // Step 6: Wait for the active dialog's real upload control. Gemini may
+    // replace the dialog shell while its uploader initializes.
+    const uploadControls = await waitForUploadFileControls(
+      () => uploadFinished,
+    );
+    if (uploadFinished || uploadControls.length === 0) {
+      await resultPromise;
+      await sleep(3000);
+      return;
     }
 
     console.log(
@@ -327,89 +331,14 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
         " upload control candidate(s)",
     );
 
-    if (
-      await requestTriggerActivation(
-        "dialog-upload-trigger",
-        uploadControls[0],
-        attempt,
-      )
-    ) {
-      await sleep(350);
-      if (uploadFinished) {
-        await resultPromise;
-        await sleep(3000);
-        return;
-      }
-
-      if (await requestExistingInjection("after-trigger-activation", attempt)) {
-        await resultPromise;
-        await sleep(3000);
-        return;
-      }
-    }
-
-    // Step 7: Fall back to content-script click events.
-    for (let i = 0; i < uploadControls.length; i++) {
-      if (uploadFinished) break;
-      const control = uploadControls[i];
-      const reason = "after-click-" + (i + 1);
-      console.log(
-        "[Zotero content] Clicking upload control " +
-          (i + 1) +
-          "/" +
-          uploadControls.length,
-      );
-      clickElement(control);
-      await sleep(350);
-
-      if (await requestExistingInjection(reason, attempt)) {
-        await resultPromise;
-        await sleep(3000);
-        return;
-      }
-    }
-
-    showAssistedUploadPrompt(uploadControls[0], files.length);
-    const getAssistedUploadControl = () =>
-      uploadControls[0]?.isConnected
-        ? uploadControls[0]
-        : findUploadFileControls(document)[0] || null;
-
-    // Keep the NotebookLM dialog open. Closing it too early can tear down the
-    // Angular uploader before it materializes the real file input.
+    // Chrome requires one genuine user activation here. Keep the injector
+    // armed and let Gemini's trusted click create or activate its real input.
+    showAssistedUploadPrompt(uploadControls[0], files.length, "upload-files");
     console.log(
-      "[Zotero content] Waiting for NotebookLM to expose an upload path; if prompted, click the highlighted Upload files button",
+      "[Zotero content] Waiting for one click on the highlighted Upload files button",
     );
-    void delayedExistingInjection(
-      1000,
-      "after-assisted-1s",
-      () => uploadFinished,
-      attempt,
-    );
-    void delayedExistingInjection(
-      5000,
-      "after-assisted-5s",
-      () => uploadFinished,
-      attempt,
-    );
-    void delayedExistingInjection(
-      15000,
-      "after-assisted-15s",
-      () => uploadFinished,
-      attempt,
-    );
-    for (const delayMs of DELAYED_UPLOAD_TRIGGER_DELAYS_MS) {
-      const seconds = Math.round(delayMs / 1000);
-      void delayedUploadTrigger(
-        delayMs,
-        "delayed-trigger-" + seconds + "s",
-        getAssistedUploadControl,
-        () => uploadFinished,
-        attempt,
-      );
-    }
 
-    // Step 6: Wait for injector to confirm success.
+    // Step 7: Wait for the injector to observe the trusted picker/input path.
     await resultPromise;
 
     // Give NotebookLM time to process
@@ -582,51 +511,6 @@ function readInjectorError(value) {
     : injectorAttempt.INJECTOR_FAILURE_ERROR;
 }
 
-async function delayedExistingInjection(delayMs, reason, isFinished, attempt) {
-  await sleep(delayMs);
-  if (isFinished()) return;
-  await requestExistingInjection(reason, attempt);
-}
-
-async function delayedUploadTrigger(
-  delayMs,
-  reason,
-  getControl,
-  isFinished,
-  attempt,
-) {
-  await sleep(delayMs);
-  if (isFinished()) return;
-
-  const control = getControl();
-  if (!control) {
-    console.log(
-      "[Zotero content] Delayed upload trigger found no control (" +
-        reason +
-        ")",
-    );
-    return;
-  }
-  highlightAssistedUploadControl(control);
-
-  console.log(
-    "[Zotero content] Delayed upload trigger attempt (" + reason + ")",
-  );
-  if (await requestTriggerActivation(reason, control, attempt)) {
-    await sleep(350);
-    if (isFinished()) return;
-    if (await requestExistingInjection(reason + "-after-trigger", attempt)) {
-      return;
-    }
-  }
-
-  if (isFinished()) return;
-  clickElement(control);
-  await sleep(350);
-  if (isFinished()) return;
-  await requestExistingInjection(reason + "-after-click", attempt);
-}
-
 async function armInjector(files, attempt) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -728,77 +612,57 @@ async function requestExistingInjection(reason, attempt) {
   });
 }
 
-async function requestTriggerActivation(reason, target = null, attempt) {
-  const marker = target
-    ? "zotero-" + Date.now() + "-" + Math.random().toString(36).slice(2)
-    : null;
-  const selector = marker
-    ? "[" + UPLOAD_TRIGGER_MARKER + '="' + marker + '"]'
-    : null;
-  if (target && marker) {
-    target.setAttribute(UPLOAD_TRIGGER_MARKER, marker);
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-    function finish(value) {
-      if (settled) return;
-      settled = true;
-      if (target && marker) {
-        target.removeAttribute(UPLOAD_TRIGGER_MARKER);
-      }
-      resolve(value);
-    }
-
-    const timeout = setTimeout(() => {
-      window.removeEventListener("message", handler);
-      console.log(
-        "[Zotero content] Upload-trigger activation timed out (" + reason + ")",
-      );
-      finish(false);
-    }, 1000);
-
-    function handler(e) {
-      if (e.source !== window) return;
-      if (!e.data || e.data.type !== "__zotero_from_injector") return;
-      if (!injectorAttempt.matchesResponse(attempt, e.data)) return;
-      if (e.data.status !== "activate-trigger") return;
-      if (e.data.reason !== reason) return;
-      clearTimeout(timeout);
-      window.removeEventListener("message", handler);
-      if (e.data.found) {
-        console.log(
-          "[Zotero content] Activated upload trigger (" +
-            reason +
-            "), listeners=" +
-            e.data.listeners,
-        );
-      } else {
-        console.log(
-          "[Zotero content] Upload-trigger activation found no target (" +
-            reason +
-            ")",
-        );
-      }
-      finish(Boolean(e.data.found));
-    }
-
-    window.addEventListener("message", handler);
-    window.postMessage(
-      {
-        type: "__zotero_to_injector",
-        command: "activate-trigger",
-        attemptNonce: attempt.attemptNonce,
-        reason,
-        selector,
-      },
-      "*",
-    );
-  });
+function isActiveDialogElement(element) {
+  return Boolean(
+    element &&
+    element.isConnected !== false &&
+    !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
+    isVisible(element),
+  );
 }
 
-async function ensureAddSourcesDialog(isFinished) {
-  const existing = document.querySelector("add-sources-dialog");
+function isActiveAddSourcesDialog(dialog) {
+  const container = dialog?.closest('mat-dialog-container[role="dialog"]');
+  return isActiveDialogElement(dialog) && isActiveDialogElement(container);
+}
+
+function findActiveAddSourcesDialog() {
+  const dialogs = querySelectorAllDeep(document, "add-sources-dialog");
+  for (let index = dialogs.length - 1; index >= 0; index -= 1) {
+    if (isActiveAddSourcesDialog(dialogs[index])) return dialogs[index];
+  }
+  return null;
+}
+
+async function waitForActiveAddSourcesDialog(
+  isFinished,
+  maxPolls = Number.POSITIVE_INFINITY,
+) {
+  let pollCount = 0;
+  while (!isFinished()) {
+    const dialog = findActiveAddSourcesDialog();
+    if (dialog) return dialog;
+    if (pollCount >= maxPolls) return null;
+    pollCount += 1;
+    await sleep(100);
+  }
+  return null;
+}
+
+async function waitForUploadFileControls(isFinished) {
+  while (!isFinished()) {
+    const dialog = findActiveAddSourcesDialog();
+    if (dialog) {
+      const controls = findUploadFileControls(dialog);
+      if (controls.length > 0) return controls;
+    }
+    await sleep(100);
+  }
+  return [];
+}
+
+async function ensureAddSourcesDialog({ fileCount, isFinished }) {
+  const existing = findActiveAddSourcesDialog();
   if (existing) return existing;
 
   const addBtn =
@@ -809,13 +673,16 @@ async function ensureAddSourcesDialog(isFinished) {
   if (addBtn) {
     clickElement(addBtn);
     if (isFinished()) return null;
-    const dialog = await waitForElement("add-sources-dialog", 3000);
-    if (isFinished()) return null;
-    if (!dialog) {
-      throw new Error("Could not open the add sources dialog");
+    const automaticDialog = await waitForActiveAddSourcesDialog(isFinished, 5);
+    if (automaticDialog || isFinished()) return automaticDialog;
+
+    showAssistedUploadPrompt(addBtn, fileCount, "add-sources");
+    const assistedDialog = await waitForActiveAddSourcesDialog(isFinished);
+    if (assistedDialog) {
+      hideAssistedUploadPrompt();
+      dialogUploadStatus.hide();
     }
-    await sleep(500);
-    return dialog;
+    return assistedDialog;
   }
 
   throw new Error("Could not find the add sources button");
@@ -930,12 +797,12 @@ function clickElement(el) {
   el.click();
 }
 
-function showAssistedUploadPrompt(uploadControl, fileCount) {
+function showAssistedUploadPrompt(uploadControl, fileCount, action) {
   hideAssistedUploadPrompt();
   if (!uploadControl || !document.body) return;
 
   highlightAssistedUploadControl(uploadControl);
-  dialogUploadStatus.setAssisted({ fileCount });
+  dialogUploadStatus.setAssisted({ action, fileCount });
 }
 
 function highlightAssistedUploadControl(uploadControl) {
@@ -1038,28 +905,6 @@ function isDisabled(el) {
 
 function normalizeText(text) {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function waitForElement(selector, timeoutMs = 3000) {
-  return new Promise((resolve) => {
-    const existing = document.querySelector(selector);
-    if (existing) {
-      resolve(existing);
-      return;
-    }
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector(selector);
-      if (el) {
-        observer.disconnect();
-        resolve(el);
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(() => {
-      observer.disconnect();
-      resolve(null);
-    }, timeoutMs);
-  });
 }
 
 function sleep(ms) {

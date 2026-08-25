@@ -19,12 +19,27 @@
       : "Adding Zotero sources…";
   }
 
-  function formatAssistedMessage(fileCount) {
+  function formatAssistedMessage(fileCount, action) {
     if (!Number.isInteger(fileCount) || fileCount <= 0) {
       throw new TypeError("File count must be a positive integer");
     }
+    const actionLabel =
+      action === "add-sources"
+        ? "Add sources"
+        : action === "upload-files"
+          ? "Upload files"
+          : null;
+    if (!actionLabel) {
+      throw new TypeError(
+        "Assisted action must be add-sources or upload-files",
+      );
+    }
     const noun = fileCount === 1 ? "file is" : "files are";
-    return `${fileCount} ${noun} ready from Zotero. Click the highlighted button to continue.`;
+    const instruction =
+      action === "upload-files"
+        ? "Chrome requires one click on the highlighted Upload files button to continue."
+        : "Click the highlighted Add sources button to open the upload dialog.";
+    return `${fileCount} ${noun} ready from Zotero. ${instruction}`;
   }
 
   function isActiveDialog(element, view) {
@@ -110,6 +125,7 @@
     let fallbackKind = "status";
     let message = "";
     let kind = "status";
+    let spinnerVisible = false;
     let observer = null;
     let panel = null;
     let spinnerAnimation = null;
@@ -204,9 +220,9 @@
           : "rgba(26, 115, 232, 0.08)";
       const spinner = panel.querySelector(`[${SPINNER_MARKER}="true"]`);
       if (spinner) {
-        spinner.hidden = kind === "error";
-        spinner.style.display = kind === "error" ? "none" : "inline-block";
-        if (kind === "error") stopSpinner();
+        spinner.hidden = !spinnerVisible;
+        spinner.style.display = spinnerVisible ? "inline-block" : "none";
+        if (!spinnerVisible) stopSpinner();
         else startSpinner(spinner);
       }
       const text = panel.querySelector(
@@ -291,6 +307,10 @@
       if (kind !== "status" && kind !== "error") {
         throw new TypeError("Status kind must be status or error");
       }
+      spinnerVisible = options.spinner ?? kind === "status";
+      if (typeof spinnerVisible !== "boolean") {
+        throw new TypeError("Spinner visibility must be a boolean");
+      }
       clearFallback();
       active = true;
       ensurePanel();
@@ -300,11 +320,11 @@
     }
 
     function setAdding({ createdNotebook = false } = {}) {
-      show(formatAddingMessage(createdNotebook));
+      show(formatAddingMessage(createdNotebook), { spinner: true });
     }
 
-    function setAssisted({ fileCount } = {}) {
-      show(formatAssistedMessage(fileCount));
+    function setAssisted({ action, fileCount } = {}) {
+      show(formatAssistedMessage(fileCount, action), { spinner: false });
     }
 
     function showError(nextMessage) {

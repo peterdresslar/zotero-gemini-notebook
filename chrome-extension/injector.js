@@ -14,24 +14,6 @@
   let interceptedInput = null;
   let fileInputObserver = null;
   let fallbackTimer = null;
-  const recordedListeners = new WeakMap();
-
-  const originalAddEventListener = EventTarget.prototype.addEventListener;
-  const originalRemoveEventListener = EventTarget.prototype.removeEventListener;
-
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    recordEventListener(this, type, listener, options);
-    return originalAddEventListener.call(this, type, listener, options);
-  };
-
-  EventTarget.prototype.removeEventListener = function (
-    type,
-    listener,
-    options,
-  ) {
-    forgetEventListener(this, type, listener);
-    return originalRemoveEventListener.call(this, type, listener, options);
-  };
 
   // --- Phase 1: Patch HTMLInputElement.prototype.click ---
   // The Angular directive (xapscottyuploadertrigger) creates a hidden
@@ -111,8 +93,7 @@
     if (e.source !== window) return;
     if (!e.data || e.data.type !== "__zotero_to_injector") return;
 
-    const { attemptNonce, command, files, notebookPathname, reason, selector } =
-      e.data;
+    const { attemptNonce, command, files, notebookPathname, reason } = e.data;
 
     if (command === "arm") {
       if (!Array.isArray(files) || files.length === 0) {
@@ -191,38 +172,6 @@
       );
       return;
     }
-
-    if (command === "activate-trigger") {
-      const current = requireCurrentAttempt(attemptNonce);
-      if (!current) return;
-      const trigger = selector
-        ? findElementBySelector(selector) || findCandidateUploadTrigger()
-        : findCandidateUploadTrigger();
-      const found = Boolean(trigger && pendingFiles);
-      let invoked = 0;
-      if (found) {
-        invoked = activateUploadTrigger(trigger, current.attemptNonce);
-        if (invoked === null) return;
-      }
-      console.log(
-        "[Zotero injector] Upload trigger activation (" +
-          (reason || "unknown") +
-          "): " +
-          (found ? "found upload trigger" : "no trigger found") +
-          ", listeners=" +
-          invoked,
-      );
-      postStatus(
-        "activate-trigger",
-        {
-          found,
-          reason: reason || null,
-          listeners: invoked,
-        },
-        current.attemptNonce,
-      );
-      return;
-    }
   });
 
   // --- Phase 3: Inject files into the captured input ---
@@ -259,21 +208,6 @@
       console.error("[Zotero injector] File injection failed");
       reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
     }
-  }
-
-  function activateUploadTrigger(target, attemptNonce) {
-    let invoked = 0;
-    for (const type of [
-      "pointerdown",
-      "mousedown",
-      "pointerup",
-      "mouseup",
-      "click",
-    ]) {
-      if (!requireCurrentAttempt(attemptNonce)) return null;
-      invoked += dispatchTrustedMouseEvent(target, type);
-    }
-    return invoked;
   }
 
   function clearPendingAttempt() {
@@ -408,28 +342,6 @@
     return inputs.length ? inputs[inputs.length - 1] : null;
   }
 
-  function findCandidateUploadTrigger() {
-    const candidates = querySelectorAllDeep(
-      document,
-      '[xapscottyuploadertrigger], button, [role="button"]',
-    )
-      .filter(isVisible)
-      .filter((el) => {
-        if (el.hasAttribute("xapscottyuploadertrigger")) return true;
-        const text = normalizeText(
-          (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-        );
-        return text.includes("upload files") || text.includes("upload file");
-      })
-      .sort((a, b) => scoreUploadTrigger(b) - scoreUploadTrigger(a));
-
-    return candidates[0] || null;
-  }
-
-  function findElementBySelector(selector) {
-    return querySelectorAllDeep(document, selector)[0] || null;
-  }
-
   function collectFileInputs(root) {
     const results = [];
     const visitedShadowRoots = new Set();
@@ -455,44 +367,6 @@
     }
 
     return results;
-  }
-
-  function querySelectorAllDeep(root, selector) {
-    const results = [];
-    const visitedShadowRoots = new Set();
-    const stack = [root];
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || typeof current.querySelectorAll !== "function") continue;
-
-      results.push(...current.querySelectorAll(selector));
-
-      for (const el of current.querySelectorAll("*")) {
-        if (el.shadowRoot && !visitedShadowRoots.has(el.shadowRoot)) {
-          visitedShadowRoots.add(el.shadowRoot);
-          stack.push(el.shadowRoot);
-        }
-      }
-    }
-
-    return results;
-  }
-
-  function scoreUploadTrigger(el) {
-    const tag = el.tagName.toLowerCase();
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    let score = 0;
-
-    if (el.hasAttribute("xapscottyuploadertrigger")) score += 100;
-    if (text.includes("upload files")) score += 40;
-    if (text.includes("upload file")) score += 30;
-    if (tag === "button") score += 10;
-    if (el.closest("add-sources-dialog")) score += 20;
-
-    return score;
   }
 
   function createFileHandle(fileData) {
@@ -533,135 +407,5 @@
       dt.items.add(decodeFile(f));
     }
     return dt;
-  }
-
-  function dispatchTrustedMouseEvent(target, type) {
-    const event = new MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      view: window,
-    });
-    target.dispatchEvent(event);
-    return invokeRecordedListeners(target, type, (currentTarget) =>
-      createTrustedEventProxy(event, target, currentTarget),
-    );
-  }
-
-  function isVisible(el) {
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") {
-      return false;
-    }
-
-    return el.getClientRects().length > 0;
-  }
-
-  function normalizeText(text) {
-    return text.toLowerCase().replace(/\s+/g, " ").trim();
-  }
-
-  function recordEventListener(target, type, listener, options) {
-    if (!listener || typeof type !== "string") return;
-
-    let byType = recordedListeners.get(target);
-    if (!byType) {
-      byType = new Map();
-      recordedListeners.set(target, byType);
-    }
-
-    let entries = byType.get(type);
-    if (!entries) {
-      entries = [];
-      byType.set(type, entries);
-    }
-
-    if (entries.some((entry) => entry.listener === listener)) return;
-    entries.push({ listener, options });
-  }
-
-  function forgetEventListener(target, type, listener) {
-    const byType = recordedListeners.get(target);
-    const entries = byType?.get(type);
-    if (!entries) return;
-
-    const index = entries.findIndex((entry) => entry.listener === listener);
-    if (index !== -1) {
-      entries.splice(index, 1);
-    }
-  }
-
-  function invokeRecordedListeners(target, type, eventFactory) {
-    const path = buildEventPath(target);
-    let invoked = 0;
-
-    for (const currentTarget of path) {
-      const entries = recordedListeners.get(currentTarget)?.get(type) || [];
-      for (const entry of entries) {
-        const event = eventFactory(currentTarget);
-        try {
-          if (typeof entry.listener === "function") {
-            entry.listener.call(currentTarget, event);
-          } else if (typeof entry.listener.handleEvent === "function") {
-            entry.listener.handleEvent.call(entry.listener, event);
-          }
-          invoked++;
-        } catch (err) {
-          console.error("[Zotero injector] Listener replay error:", err);
-        }
-      }
-
-      const propertyListener = currentTarget["on" + type];
-      if (typeof propertyListener === "function") {
-        const event = eventFactory(currentTarget);
-        try {
-          propertyListener.call(currentTarget, event);
-          invoked++;
-        } catch (err) {
-          console.error(
-            "[Zotero injector] Property listener replay error:",
-            err,
-          );
-        }
-      }
-    }
-
-    return invoked;
-  }
-
-  function buildEventPath(target) {
-    const path = [];
-    let current = target;
-    while (current) {
-      path.push(current);
-      current = current.parentNode || current.host || null;
-    }
-    path.push(window);
-    return path;
-  }
-
-  function createTrustedEventProxy(
-    event,
-    target,
-    currentTarget,
-    dataTransfer = null,
-  ) {
-    const path = buildEventPath(target);
-    return new Proxy(event, {
-      get(source, prop) {
-        if (prop === "isTrusted") return true;
-        if (prop === "target") return target;
-        if (prop === "srcElement") return target;
-        if (prop === "currentTarget") return currentTarget;
-        if (prop === "dataTransfer" && dataTransfer) return dataTransfer;
-        if (prop === "composedPath") return () => path;
-
-        const value = source[prop];
-        if (typeof value === "function") {
-          return value.bind(source);
-        }
-        return value;
-      },
-    });
   }
 })();

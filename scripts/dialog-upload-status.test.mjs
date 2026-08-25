@@ -280,33 +280,28 @@ function controllerFor(document, fallbackEvents = []) {
 
 test.beforeEach(() => FakeMutationObserver.reset());
 
-test("formats concise adding and assisted states without upload-trigger text", () => {
+test("formats distinct explicit Add sources and Upload files actions", () => {
   assert.equal(formatAddingMessage(false), "Adding Zotero sources…");
   assert.equal(
     formatAddingMessage(true),
     "New notebook created. Adding Zotero sources…",
   );
   assert.equal(
-    formatAssistedMessage(1),
-    "1 file is ready from Zotero. Click the highlighted button to continue.",
+    formatAssistedMessage(1, "add-sources"),
+    "1 file is ready from Zotero. Click the highlighted Add sources button to open the upload dialog.",
   );
   assert.equal(
-    formatAssistedMessage(2),
-    "2 files are ready from Zotero. Click the highlighted button to continue.",
+    formatAssistedMessage(2, "upload-files"),
+    "2 files are ready from Zotero. Chrome requires one click on the highlighted Upload files button to continue.",
   );
-  assert.throws(() => formatAssistedMessage(0), /positive integer/);
-
-  const messages = [
-    formatAddingMessage(false),
-    formatAddingMessage(true),
-    formatAssistedMessage(2),
-  ];
-  for (const message of messages) {
-    assert.doesNotMatch(
-      message,
-      /upload files?|upload sources?|choose files?|browse files?|drop your files/i,
-    );
-  }
+  assert.throws(
+    () => formatAssistedMessage(0, "upload-files"),
+    /positive integer/,
+  );
+  assert.throws(
+    () => formatAssistedMessage(1, "unknown"),
+    /add-sources or upload-files/,
+  );
 });
 
 test("places one accessible status immediately before the dialog drop zone", () => {
@@ -332,14 +327,17 @@ test("places one accessible status immediately before the dialog drop zone", () 
   assert.equal(spinner.getAttribute("aria-hidden"), "true");
   assert.equal(spinner.animationCount, 1);
 
-  controller.setAssisted({ fileCount: 2 });
+  controller.setAssisted({ action: "upload-files", fileCount: 2 });
   assert.equal(document.getElementById(PANEL_ID), panel);
   assert.equal(
     document.querySelectorAll("[data-zotero-dialog-upload-status]").length,
     1,
   );
-  assert.equal(panel.textContent, formatAssistedMessage(2));
+  assert.equal(panel.textContent, formatAssistedMessage(2, "upload-files"));
+  assert.equal(spinner.hidden, true);
+  assert.equal(spinner.style.display, "none");
   assert.equal(spinner.animationCount, 1);
+  assert.equal(spinner.animationCancelCount, 1);
 
   controller.hide();
   assert.equal(spinner.animationCancelCount, 1);

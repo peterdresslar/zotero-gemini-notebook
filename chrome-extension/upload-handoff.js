@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const PROTOCOL_VERSION = 3;
+  const PROTOCOL_VERSION = 4;
   const DEFAULT_EXPIRY_MS = 5 * 60 * 1000;
   const MAX_ATTACHMENTS = 50;
   const JOB_ID_PATTERN =

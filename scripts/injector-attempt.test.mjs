@@ -176,13 +176,13 @@ test("job-bound terminal copy requires restaging and describes only handoff", ()
   assert.match(popupSource, /handed to Gemini Notebook's uploader/u);
 });
 
-test("job-bound content skips synthetic drop and reaches real-input fallback", async () => {
+test("inner upload path immediately requests one real click without synthetic activation", async () => {
   const calls = [];
-  let existingProbeCount = 0;
   let resolveTerminal;
   const terminalPromise = new Promise((resolve) => {
     resolveTerminal = resolve;
   });
+  const uploadControl = {};
   const uploadFiles = loadContentFunction(
     "uploadFilesIntoCurrentNotebook",
     "ensureNotebookDetailPage",
@@ -194,15 +194,14 @@ test("job-bound content skips synthetic drop and reaches real-input fallback", a
         cancel: () => calls.push("cancel"),
         promise: terminalPromise,
       }),
-      delayedExistingInjection: () => {},
-      delayedUploadTrigger: () => {},
       dialogUploadStatus: { hide: () => calls.push("hide-status") },
       disarmInjector: () => calls.push("disarm"),
-      ensureAddSourcesDialog: async () => {
+      ensureAddSourcesDialog: async ({ fileCount, isFinished }) => {
+        assert.equal(fileCount, 1);
+        assert.equal(isFinished(), false);
         calls.push("dialog");
         return {};
       },
-      findUploadFileControls: () => [{}],
       hideAssistedUploadPrompt: () => {},
       injectorAttempt: {
         createUploadAttempt: (pathname, randomUUID) => {
@@ -211,25 +210,23 @@ test("job-bound content skips synthetic drop and reaches real-input fallback", a
           return { attemptNonce: ATTEMPT_A, notebookPathname: NOTEBOOK_A };
         },
       },
-      requestDropInjection: async () => {
-        calls.push("drop");
-        assert.fail("job-bound content must not request synthetic drop");
-      },
       requestExistingInjection: async () => {
-        existingProbeCount += 1;
-        calls.push(`existing-${existingProbeCount}`);
-        if (existingProbeCount === 1) return false;
+        calls.push("existing-before-click");
+        return false;
+      },
+      showAssistedUploadPrompt: (control, fileCount, action) => {
+        assert.equal(control, uploadControl);
+        assert.equal(fileCount, 1);
+        assert.equal(action, "upload-files");
+        calls.push("assisted-upload-files");
         resolveTerminal();
-        return true;
       },
-      requestTriggerActivation: async () => {
-        calls.push("trigger");
-        return true;
-      },
-      showAssistedUploadPrompt: () => {},
       sleep: async () => {},
       crypto: { randomUUID: () => ATTEMPT_A },
-      DELAYED_UPLOAD_TRIGGER_DELAYS_MS: [],
+      waitForUploadFileControls: async () => {
+        calls.push("controls");
+        return [uploadControl];
+      },
     },
   );
 
@@ -238,10 +235,13 @@ test("job-bound content skips synthetic drop and reaches real-input fallback", a
     notebookPathname: NOTEBOOK_A,
   });
 
-  assert.equal(existingProbeCount, 2);
-  assert.equal(calls.includes("dialog"), true);
-  assert.equal(calls.includes("trigger"), true);
-  assert.equal(calls.includes("drop"), false);
+  assert.deepEqual(calls.slice(0, 5), [
+    "arm",
+    "existing-before-click",
+    "dialog",
+    "controls",
+    "assisted-upload-files",
+  ]);
   assert.equal(calls.includes("cancel"), false);
   assert.equal(calls.includes("disarm"), false);
   const uploadSource = readContentFunctionSource(
@@ -249,6 +249,126 @@ test("job-bound content skips synthetic drop and reaches real-input fallback", a
     "ensureNotebookDetailPage",
   );
   assert.doesNotMatch(uploadSource, /requestDropInjection\(/u);
+  assert.doesNotMatch(uploadSource, /requestTriggerActivation\(/u);
+  assert.doesNotMatch(uploadSource, /delayedUploadTrigger\(/u);
+  assert.doesNotMatch(uploadSource, /clickElement\(/u);
+});
+
+test("automatic Add sources open uses one click without an assisted prompt", async () => {
+  const calls = [];
+  const addButton = {};
+  const dialog = createAddSourcesDialog();
+  let dialogs = [];
+  const { ensureAddSourcesDialog } = loadAddSourcesFunctions({
+    clickElement: (target) => {
+      assert.equal(target, addButton);
+      calls.push("click");
+      dialogs = [dialog];
+    },
+    document: { body: {}, querySelector: () => null },
+    findClickableByText: () => null,
+    geminiControls: { findAddSourcesControl: () => addButton },
+    hideAssistedUploadPrompt: () => calls.push("hide-assisted"),
+    isVisible: (candidate) => candidate.visible,
+    querySelectorAllDeep: (_root, selector) =>
+      selector === "add-sources-dialog" ? dialogs : [],
+    showAssistedUploadPrompt: () =>
+      assert.fail("automatic open must not show a required-click prompt"),
+    sleep: async () => assert.fail("automatic open should not poll"),
+    dialogUploadStatus: { hide: () => calls.push("hide-status") },
+  });
+
+  const result = await ensureAddSourcesDialog({
+    fileCount: 2,
+    isFinished: () => false,
+  });
+
+  assert.equal(result, dialog);
+  assert.deepEqual(calls, ["click"]);
+});
+
+test("manual Add sources open waits for the latest active dialog", async () => {
+  const calls = [];
+  const addButton = {};
+  const hiddenDialog = createAddSourcesDialog({ hidden: true });
+  const activeDialog = createAddSourcesDialog();
+  const visibleDecoy = createAddSourcesDialog({ decoy: true });
+  let dialogs = [hiddenDialog, visibleDecoy];
+  let pollCount = 0;
+  const { ensureAddSourcesDialog } = loadAddSourcesFunctions({
+    clickElement: () => calls.push("click"),
+    document: { body: {}, querySelector: () => null },
+    findClickableByText: () => null,
+    geminiControls: { findAddSourcesControl: () => addButton },
+    hideAssistedUploadPrompt: () => calls.push("hide-assisted"),
+    isVisible: (candidate) => candidate.visible,
+    querySelectorAllDeep: (_root, selector) =>
+      selector === "add-sources-dialog" ? dialogs : [],
+    showAssistedUploadPrompt: (_target, _fileCount, action) => {
+      calls.push(`assisted-${action}`);
+    },
+    sleep: async () => {
+      pollCount += 1;
+      if (pollCount === 6) {
+        dialogs = [activeDialog, hiddenDialog, visibleDecoy];
+      }
+    },
+    dialogUploadStatus: { hide: () => calls.push("hide-status") },
+  });
+
+  const result = await ensureAddSourcesDialog({
+    fileCount: 1,
+    isFinished: () => false,
+  });
+
+  assert.equal(result, activeDialog);
+  assert.equal(pollCount, 6);
+  assert.deepEqual(calls, [
+    "click",
+    "assisted-add-sources",
+    "hide-assisted",
+    "hide-status",
+  ]);
+});
+
+test("Add sources assisted wait exits when the upload attempt finishes", async () => {
+  const calls = [];
+  const addButton = {};
+  let finished = false;
+  let pollCount = 0;
+  const { ensureAddSourcesDialog } = loadAddSourcesFunctions({
+    clickElement: () => calls.push("click"),
+    dialogUploadStatus: { hide: () => calls.push("hide-status") },
+    document: { body: {}, querySelector: () => null },
+    findClickableByText: () => null,
+    geminiControls: { findAddSourcesControl: () => addButton },
+    hideAssistedUploadPrompt: () => calls.push("hide-assisted"),
+    isVisible: () => false,
+    querySelectorAllDeep: () => [],
+    showAssistedUploadPrompt: (_target, _fileCount, action) => {
+      calls.push(`assisted-${action}`);
+    },
+    sleep: async () => {
+      pollCount += 1;
+      if (pollCount === 6) finished = true;
+    },
+  });
+
+  const result = await ensureAddSourcesDialog({
+    fileCount: 1,
+    isFinished: () => finished,
+  });
+
+  assert.equal(result, null);
+  assert.equal(pollCount, 6);
+  assert.deepEqual(calls, ["click", "assisted-add-sources"]);
+  assert.match(
+    readContentFunctionSource(
+      "uploadFilesIntoCurrentNotebook",
+      "ensureNotebookDetailPage",
+    ),
+    /\(\) => \{\s*uploadFinished = true;\s*hideAssistedUploadPrompt\(\);/u,
+  );
 });
 
 test("a new-notebook input timeout becomes unverified and requires restaging", async () => {
@@ -761,4 +881,41 @@ function readContentFunctionSource(name, nextName) {
   assert.ok(start >= 0, `missing content function ${name}`);
   assert.ok(end > start, `missing content function boundary ${nextName}`);
   return contentSource.slice(start, end);
+}
+
+function loadAddSourcesFunctions(context) {
+  const start = contentSource.indexOf("function isActiveDialogElement");
+  const end = contentSource.indexOf("function findUploadFileControls", start);
+  assert.ok(start >= 0, "missing active Add sources dialog helpers");
+  assert.ok(end > start, "missing Add sources helper boundary");
+  return vm.runInNewContext(
+    `(() => { ${contentSource.slice(start, end)}; return { ensureAddSourcesDialog }; })()`,
+    context,
+  );
+}
+
+function createAddSourcesDialog({ decoy = false, hidden = false } = {}) {
+  const container = {
+    isConnected: true,
+    visible: true,
+    closest(selector) {
+      if (selector === '[hidden], [inert], [aria-hidden="true"]') {
+        return hidden ? this : null;
+      }
+      return null;
+    },
+  };
+  return {
+    isConnected: true,
+    visible: true,
+    closest(selector) {
+      if (selector === 'mat-dialog-container[role="dialog"]') {
+        return decoy ? null : container;
+      }
+      if (selector === '[hidden], [inert], [aria-hidden="true"]') {
+        return hidden ? this : null;
+      }
+      return null;
+    },
+  };
 }
