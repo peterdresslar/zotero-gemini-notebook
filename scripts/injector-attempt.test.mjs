@@ -182,7 +182,7 @@ test("job-bound terminal copy requires restaging and describes only handoff", ()
   assert.doesNotMatch(popupSource, /return to Gemini Notebook home/u);
 });
 
-test("inner upload path immediately requests one real click without synthetic activation", async () => {
+test("inner assisted path restores adding status after real handoff success", async () => {
   const calls = [];
   let resolveTerminal;
   const terminalPromise = new Promise((resolve) => {
@@ -200,7 +200,10 @@ test("inner upload path immediately requests one real click without synthetic ac
         cancel: () => calls.push("cancel"),
         promise: terminalPromise,
       }),
-      dialogUploadStatus: { hide: () => calls.push("hide-status") },
+      dialogUploadStatus: {
+        setAdding: ({ createdNotebook }) =>
+          calls.push(`adding-${createdNotebook}`),
+      },
       disarmInjector: () => calls.push("disarm"),
       ensureAddSourcesDialog: async ({ fileCount, isFinished }) => {
         assert.equal(fileCount, 1);
@@ -208,7 +211,7 @@ test("inner upload path immediately requests one real click without synthetic ac
         calls.push("dialog");
         return {};
       },
-      hideAssistedUploadPrompt: () => {},
+      hideAssistedUploadPrompt: () => calls.push("hide-assisted"),
       injectorAttempt: {
         createUploadAttempt: (pathname, randomUUID) => {
           assert.equal(pathname, NOTEBOOK_A);
@@ -220,11 +223,18 @@ test("inner upload path immediately requests one real click without synthetic ac
         calls.push("existing-before-click");
         return false;
       },
-      showAssistedUploadPrompt: (control, fileCount, action) => {
+      showAssistedUploadPrompt: (
+        control,
+        fileCount,
+        action,
+        onTrustedClick,
+      ) => {
         assert.equal(control, uploadControl);
         assert.equal(fileCount, 1);
         assert.equal(action, "upload-files");
         calls.push("assisted-upload-files");
+        onTrustedClick();
+        onTrustedClick();
         resolveTerminal();
       },
       sleep: async () => {},
@@ -236,10 +246,14 @@ test("inner upload path immediately requests one real click without synthetic ac
     },
   );
 
-  await uploadFiles([{ base64Data: "AA==" }], {
-    createdNewNotebook: false,
-    notebookPathname: NOTEBOOK_A,
-  });
+  await uploadFiles(
+    [{ base64Data: "AA==" }],
+    {
+      createdNewNotebook: true,
+      notebookPathname: NOTEBOOK_A,
+    },
+    true,
+  );
 
   assert.deepEqual(calls.slice(0, 5), [
     "arm",
@@ -248,6 +262,7 @@ test("inner upload path immediately requests one real click without synthetic ac
     "controls",
     "assisted-upload-files",
   ]);
+  assert.deepEqual(calls.slice(5), ["hide-assisted", "adding-true"]);
   assert.equal(calls.includes("cancel"), false);
   assert.equal(calls.includes("disarm"), false);
   const uploadSource = readContentFunctionSource(
@@ -258,6 +273,53 @@ test("inner upload path immediately requests one real click without synthetic ac
   assert.doesNotMatch(uploadSource, /requestTriggerActivation\(/u);
   assert.doesNotMatch(uploadSource, /delayedUploadTrigger\(/u);
   assert.doesNotMatch(uploadSource, /clickElement\(/u);
+});
+
+test("only the first trusted Upload files click restores adding status", () => {
+  const calls = [];
+  const uploadControl = createAssistedUploadControl();
+  const addSourcesControl = createAssistedUploadControl();
+  const { hideAssistedUploadPrompt, showAssistedUploadPrompt } =
+    loadAssistedPromptFunctions({
+      console: { log() {} },
+      dialogUploadStatus: {
+        setAssisted: ({ action, fileCount }) =>
+          calls.push(`assisted-${action}-${fileCount}`),
+      },
+      document: {
+        body: {},
+        querySelectorAll: () => [],
+      },
+    });
+
+  showAssistedUploadPrompt(uploadControl, 2, "upload-files", () =>
+    calls.push("trusted-upload-files"),
+  );
+  assert.equal(uploadControl.hasAttribute("data-zotero-assisted-upload"), true);
+
+  uploadControl.dispatchClick(false);
+  uploadControl.dispatchClick(false);
+  assert.deepEqual(calls, ["assisted-upload-files-2"]);
+  assert.equal(uploadControl.hasAttribute("data-zotero-assisted-upload"), true);
+
+  uploadControl.dispatchClick(true);
+  uploadControl.dispatchClick(true);
+  assert.deepEqual(calls, ["assisted-upload-files-2", "trusted-upload-files"]);
+  assert.equal(
+    uploadControl.hasAttribute("data-zotero-assisted-upload"),
+    false,
+  );
+
+  showAssistedUploadPrompt(addSourcesControl, 2, "add-sources", () =>
+    assert.fail("Add sources must not use the Upload files callback"),
+  );
+  addSourcesControl.dispatchClick(true);
+  assert.deepEqual(calls, [
+    "assisted-upload-files-2",
+    "trusted-upload-files",
+    "assisted-add-sources-2",
+  ]);
+  hideAssistedUploadPrompt();
 });
 
 test("automatic Add sources open uses one click without an assisted prompt", async () => {
@@ -898,6 +960,46 @@ function loadAddSourcesFunctions(context) {
     `(() => { ${contentSource.slice(start, end)}; return { ensureAddSourcesDialog }; })()`,
     context,
   );
+}
+
+function loadAssistedPromptFunctions(context) {
+  const start = contentSource.indexOf("function showAssistedUploadPrompt");
+  const end = contentSource.indexOf("function showPageNotice", start);
+  assert.ok(start >= 0, "missing assisted upload prompt helpers");
+  assert.ok(end > start, "missing assisted upload prompt helper boundary");
+  return vm.runInNewContext(
+    `(() => { let assistedClickCleanup = null; ${contentSource.slice(start, end)}; return { hideAssistedUploadPrompt, showAssistedUploadPrompt }; })()`,
+    context,
+  );
+}
+
+function createAssistedUploadControl() {
+  const attributes = new Set();
+  let clickListener = null;
+  return {
+    style: { outline: "", outlineOffset: "" },
+    addEventListener(type, listener) {
+      assert.equal(type, "click");
+      clickListener = listener;
+    },
+    dispatchClick(isTrusted) {
+      clickListener?.({ isTrusted });
+    },
+    hasAttribute(name) {
+      return attributes.has(name);
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
+    removeEventListener(type, listener) {
+      assert.equal(type, "click");
+      if (clickListener === listener) clickListener = null;
+    },
+    scrollIntoView() {},
+    setAttribute(name) {
+      attributes.add(name);
+    },
+  };
 }
 
 function createAddSourcesDialog({ decoy = false, hidden = false } = {}) {

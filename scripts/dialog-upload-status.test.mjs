@@ -327,20 +327,34 @@ test("places one accessible status immediately before the dialog drop zone", () 
   assert.equal(spinner.getAttribute("aria-hidden"), "true");
   assert.equal(spinner.animationCount, 1);
 
-  controller.setAssisted({ action: "upload-files", fileCount: 2 });
+  controller.setAssisted({ action: "add-sources", fileCount: 2 });
   assert.equal(document.getElementById(PANEL_ID), panel);
   assert.equal(
     document.querySelectorAll("[data-zotero-dialog-upload-status]").length,
     1,
   );
+  assert.equal(panel.textContent, formatAssistedMessage(2, "add-sources"));
+  assert.equal(spinner.hidden, true);
+  assert.equal(spinner.style.display, "none");
+  assert.equal(spinner.animationCount, 1);
+  assert.equal(spinner.animationCancelCount, 1);
+
+  controller.setAssisted({ action: "upload-files", fileCount: 2 });
   assert.equal(panel.textContent, formatAssistedMessage(2, "upload-files"));
   assert.equal(spinner.hidden, true);
   assert.equal(spinner.style.display, "none");
   assert.equal(spinner.animationCount, 1);
   assert.equal(spinner.animationCancelCount, 1);
 
-  controller.hide();
+  controller.setAdding({ createdNotebook: true });
+  assert.equal(panel.textContent, formatAddingMessage(true));
+  assert.equal(spinner.hidden, false);
+  assert.equal(spinner.style.display, "inline-block");
+  assert.equal(spinner.animationCount, 2);
   assert.equal(spinner.animationCancelCount, 1);
+
+  controller.hide();
+  assert.equal(spinner.animationCancelCount, 2);
 });
 
 test("skips newer hidden dialogs and uses the active uploader", () => {

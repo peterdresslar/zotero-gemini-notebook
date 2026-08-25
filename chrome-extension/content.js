@@ -179,7 +179,7 @@ async function uploadBatch(files, job) {
       createdNotebook = await ensureNotebookDetailPage();
     }
     dialogUploadStatus.setAdding({ createdNotebook });
-    await uploadFilesIntoCurrentNotebook(files, job);
+    await uploadFilesIntoCurrentNotebook(files, job, createdNotebook);
     const reported = await reportJobLifecycle(job, "submitted");
     if (reported) {
       dialogUploadStatus.hide();
@@ -251,7 +251,7 @@ async function reportJobLifecycle(job, event) {
   }
 }
 
-async function uploadFilesIntoCurrentNotebook(files, job) {
+async function uploadFilesIntoCurrentNotebook(files, job, createdNotebook) {
   const attempt = injectorAttempt.createUploadAttempt(
     job?.notebookPathname ?? null,
     () => globalThis.crypto.randomUUID(),
@@ -263,11 +263,17 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
   const resultPromise = resultWaiter.promise;
 
   let uploadFinished = false;
+  let addingStatusRestored = false;
+  const restoreAddingStatus = () => {
+    if (addingStatusRestored) return;
+    addingStatusRestored = true;
+    hideAssistedUploadPrompt();
+    dialogUploadStatus.setAdding({ createdNotebook });
+  };
   resultPromise.then(
     () => {
       uploadFinished = true;
-      hideAssistedUploadPrompt();
-      dialogUploadStatus.hide();
+      restoreAddingStatus();
     },
     () => {
       uploadFinished = true;
@@ -333,7 +339,12 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
 
     // Chrome requires one genuine user activation here. Keep the injector
     // armed and let Gemini's trusted click create or activate its real input.
-    showAssistedUploadPrompt(uploadControls[0], files.length, "upload-files");
+    showAssistedUploadPrompt(
+      uploadControls[0],
+      files.length,
+      "upload-files",
+      restoreAddingStatus,
+    );
     console.log(
       "[Zotero content] Waiting for one click on the highlighted Upload files button",
     );
@@ -797,15 +808,23 @@ function clickElement(el) {
   el.click();
 }
 
-function showAssistedUploadPrompt(uploadControl, fileCount, action) {
+function showAssistedUploadPrompt(
+  uploadControl,
+  fileCount,
+  action,
+  onTrustedClick,
+) {
   hideAssistedUploadPrompt();
   if (!uploadControl || !document.body) return;
 
-  highlightAssistedUploadControl(uploadControl);
+  highlightAssistedUploadControl(
+    uploadControl,
+    action === "upload-files" ? onTrustedClick : null,
+  );
   dialogUploadStatus.setAssisted({ action, fileCount });
 }
 
-function highlightAssistedUploadControl(uploadControl) {
+function highlightAssistedUploadControl(uploadControl, onTrustedClick) {
   if (!uploadControl || !document.body) return;
   if (
     assistedClickCleanup &&
@@ -825,11 +844,22 @@ function highlightAssistedUploadControl(uploadControl) {
   uploadControl.style.outlineOffset = "3px";
   uploadControl.scrollIntoView({ block: "center", inline: "center" });
 
+  let trustedClickHandled = false;
   const clickLogger = (event) => {
     console.log(
       "[Zotero content] Highlighted upload control clicked; trusted=" +
         event.isTrusted,
     );
+    if (
+      event.isTrusted !== true ||
+      trustedClickHandled ||
+      typeof onTrustedClick !== "function"
+    ) {
+      return;
+    }
+    trustedClickHandled = true;
+    if (assistedClickCleanup) assistedClickCleanup();
+    onTrustedClick();
   };
   uploadControl.addEventListener("click", clickLogger, {
     capture: true,
