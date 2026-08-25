@@ -292,7 +292,7 @@ test("formats distinct explicit Add sources and Upload files actions", () => {
   );
   assert.equal(
     formatAssistedMessage(2, "upload-files"),
-    "2 files are ready from Zotero. Chrome requires one click on the highlighted Upload files button to continue.",
+    "2 files are ready from Zotero. Now processing files: please don't leave this window. If you are stuck, try pressing the Upload files button.",
   );
   assert.throws(
     () => formatAssistedMessage(0, "upload-files"),

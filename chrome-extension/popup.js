@@ -189,9 +189,7 @@ function updateImportBtn() {
   const count = selectedIds.size;
   btn.disabled = count === 0 || !companionCompatible;
   btn.textContent =
-    count > 0
-      ? `Import ${count} source${count !== 1 ? "s" : ""} to Gemini Notebook`
-      : "Import to Gemini Notebook";
+    count > 0 ? `Import ${count} source${count !== 1 ? "s" : ""}` : "Import";
 }
 
 async function doImport() {
@@ -218,7 +216,7 @@ async function doImport() {
       "Please open Gemini Notebook before importing sources.";
     progressFill.style.width = "0%";
     btn.disabled = false;
-    btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+    btn.textContent = `Import ${toImport.length} sources`;
     return;
   }
 
@@ -230,7 +228,7 @@ async function doImport() {
         "The Gemini Notebook tab is using an older connector. Refresh the tab and try again.";
       progressFill.style.width = "0%";
       btn.disabled = false;
-      btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+      btn.textContent = `Import ${toImport.length} sources`;
       return;
     }
   } catch {
@@ -238,7 +236,7 @@ async function doImport() {
       "Content script not loaded — please refresh the Gemini Notebook tab and try again.";
     progressFill.style.width = "0%";
     btn.disabled = false;
-    btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+    btn.textContent = `Import ${toImport.length} sources`;
     return;
   }
 
@@ -260,7 +258,7 @@ async function doImport() {
       btn.textContent = "Open Gemini Notebook home first";
     } else {
       btn.disabled = false;
-      btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+      btn.textContent = `Import ${toImport.length} sources`;
     }
     return;
   }

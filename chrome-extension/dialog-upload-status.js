@@ -37,7 +37,7 @@
     const noun = fileCount === 1 ? "file is" : "files are";
     const instruction =
       action === "upload-files"
-        ? "Chrome requires one click on the highlighted Upload files button to continue."
+        ? "Now processing files: please don't leave this window. If you are stuck, try pressing the Upload files button."
         : "Click the highlighted Add sources button to open the upload dialog.";
     return `${fileCount} ${noun} ready from Zotero. ${instruction}`;
   }
