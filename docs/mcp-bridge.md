@@ -7,10 +7,11 @@ Gemini Notebook from Zotero-managed sources.
 > [!IMPORTANT]
 > This document describes the target architecture and the internal foundations
 > for it. The current beta contains a repository-local adapter with one
-> read-only connector-status tool and one authenticated staging tool. It does
-> **not** autonomously wake Chrome, create and verify a Gemini Notebook, or
-> expose job status through MCP. After the user starts the Chrome import, the
-> development companion now records the claimant-bound handoff state.
+> read-only connector-status tool, one authenticated staging tool, and one
+> authenticated read-only job-status tool. It does **not** autonomously wake
+> Chrome or create and verify a Gemini Notebook. After the user starts the
+> Chrome import, the development companion records the claimant-bound handoff
+> state for the status tool to observe.
 
 ## Product Contract
 
@@ -63,7 +64,9 @@ endpoint and returns an allowlisted diagnostic result. The first authenticated
 action, `stage_zotero_import_job`, accepts stable Zotero keys and creates only a
 bounded job in the existing Chrome handoff queue. Its result contains an opaque
 job ID, state, counts, and timestamps—not sources or paths. The opt-in result is
-not an authentication credential.
+not an authentication credential. `get_zotero_import_job` reads that opaque job
+by ID through the same authenticated boundary and returns only the allowlisted
+state, counts, and timestamps.
 
 The autonomous workflow tools will build on the staging preview's separately
 authenticated loopback calls. Generated launch guidance must not use an
@@ -378,18 +381,18 @@ be reviewed before the next one depends on it.
    exact-version-pinned FastMCP stdio process, one read-only status tool, and
    automatic local bridge authorization without exposing source data or
    mutations.
-4. **Authenticated job control:** add the first narrow authenticated staging
-   endpoint and retain the same no-browser, no-CORS, log-safe boundary for later
-   status and cancellation operations.
+4. **Authenticated job control:** add narrow authenticated staging and
+   read-only job-status endpoints while retaining the same no-browser,
+   no-CORS, log-safe boundary for later cancellation operations.
 5. **Chrome job identity:** carry the opaque job identity through a
    claimant-bound browser handoff and record `submitted`, `unverified`, or
    `failed` without equating injection with verification. Upload retry and
    cancellation semantics remain follow-up work.
 6. **Verification:** add autonomous claiming, new-notebook creation, and source
    list comparison so `verified` reflects visible Gemini state.
-7. **Workflow tools:** replace the current staging-only preview with the
-   truthful create-and-verify workflow, add job status, and add cancellation
-   only if it remains safely idempotent.
+7. **Workflow tools:** replace the current staging-and-status preview with the
+   truthful create-and-verify workflow, and add cancellation only if it remains
+   safely idempotent.
 8. **Release gates:** document setup, privacy, recovery, compatibility, and
    tested versions; complete the automated and live end-to-end checks for
    `0.4.0`.
@@ -407,9 +410,10 @@ be reviewed before the next one depends on it.
   superseding an unclaimed job, and protecting a claimed job.
 - Sanitization tests prove public DTOs contain no attachment bytes or local file
   paths.
-- Authentication and staging-endpoint tests cover missing or wrong
+- Authentication, staging-endpoint, and job-status tests cover missing or wrong
   authorization, browser origins, query rejection, replay and clock windows,
-  exact request bodies, canonical encoding, and size limits.
+  exact request bodies, canonical encoding, size limits, missing jobs, and
+  private-field exclusion.
 - Chrome tests distinguish claimed, submitted, verifying, verified, retryable,
   and terminal failure paths.
 
@@ -419,6 +423,8 @@ be reviewed before the next one depends on it.
   supported sources through the Chrome companion.
 - A supported MCP host can stage a job from both a collection key and explicit
   item keys with `stage_zotero_import_job`.
+- The same host can query that opaque job with `get_zotero_import_job` and
+  observe its claimant-bound state without receiving Zotero source metadata.
 - Chrome can claim exactly that job, create a notebook, transfer only its
   sources, and retain useful status across expected page latency.
 - `submitted` is visible before verification, and a missing or renamed Gemini

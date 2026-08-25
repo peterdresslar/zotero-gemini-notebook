@@ -17,8 +17,10 @@ const zoteroPackageEntries = [
 const zoteroRuntimeBundle = [
   "ZGN-LOCAL-AUTH-V1",
   "/notebooklm/control/v1/auth-check",
-  "/notebooklm/control/v1/jobs",
+  '/notebooklm/control/v1/jobs"',
+  '/notebooklm/control/v1/jobs/status"',
   "application/vnd.zotero-gemini-notebook.job+json",
+  "application/vnd.zotero-gemini-notebook.job-status+json",
   "/notebooklm/job-claim",
   "/notebooklm/job-event",
   "application/vnd.zotero-gemini-notebook.job-claim+json",
@@ -222,7 +224,9 @@ test("Zotero runtime package retains the MCP staging boundary", () => {
 
   for (const marker of [
     "ZGN-LOCAL-AUTH-V1",
-    "/notebooklm/control/v1/jobs",
+    '/notebooklm/control/v1/jobs"',
+    '/notebooklm/control/v1/jobs/status"',
+    "application/vnd.zotero-gemini-notebook.job-status+json",
     "/notebooklm/job-claim",
     "/notebooklm/job-event",
     "maxByteSize",

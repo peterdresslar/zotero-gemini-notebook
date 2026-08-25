@@ -188,14 +188,15 @@ Maintainers should follow the
 version.
 
 The in-development MCP beta includes a repository-local stdio adapter with a
-read-only connector-status tool and an authenticated staging tool for early
-testing. The staging tool can resolve stable Zotero collection or item keys
-into the same bounded handoff queue used by the existing workflow. It does not
-create a Gemini Notebook or upload sources: the user must still complete the
-handoff from the Chrome companion. The development companion now keeps the
-opaque job identity through that handoff and records a truthful submitted or
-fixed non-success state in Zotero, but final source verification and MCP job
-status remain future work. See the
+read-only connector-status tool, an authenticated staging tool, and an
+authenticated read-only job-status tool for early testing. The staging tool can
+resolve stable Zotero collection or item keys into the same bounded handoff
+queue used by the existing workflow. It does not create a Gemini Notebook or
+upload sources: the user must still complete the handoff from the Chrome
+companion. The development companion keeps the opaque job identity through that
+handoff and records a truthful submitted or fixed non-success state that the
+status tool can observe, but final source verification remains future work. See
+the
 [adapter testing guide](mcp-adapter/README.md) and
 [MCP Bridge Architecture](docs/mcp-bridge.md).
 

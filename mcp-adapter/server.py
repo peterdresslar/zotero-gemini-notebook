@@ -13,7 +13,10 @@ from fastmcp import FastMCP
 
 from zotero_jobs import (
     ZoteroImportJobResult,
+    ZoteroImportJobStatusResult,
     create_internal_error_job_result,
+    create_internal_error_job_status_result,
+    get_zotero_import_job as get_zotero_import_job_request,
     stage_zotero_import_job as stage_zotero_import_job_request,
 )
 from zotero_status import (
@@ -30,8 +33,9 @@ mcp = FastMCP(
         "existing handoff queue contains staged sources. This adapter does not "
         "expose attachment contents, local authentication material, or "
         "filesystem paths. It can stage an idempotent Zotero import job from "
-        "stable item or collection keys, but staging does not mean that "
-        "Chrome created a Gemini Notebook or uploaded the sources."
+        "stable item or collection keys and read back that job's sanitized "
+        "lifecycle state, but staging or submission does not mean that Chrome "
+        "created a Gemini Notebook or verified the uploaded sources."
     ),
     mask_error_details=True,
 )
@@ -92,6 +96,29 @@ def stage_zotero_import_job(
         )
     except Exception:
         return create_internal_error_job_result()
+
+
+@mcp.tool(
+    name="get_zotero_import_job",
+    title="Get Zotero import job",
+    description=(
+        "Read one previously returned opaque Zotero import-job ID and return "
+        "only its sanitized lifecycle state, counts, and timestamps. This "
+        "does not return source metadata, files, claim credentials, or a "
+        "Gemini Notebook URL."
+    ),
+    annotations={
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+def get_zotero_import_job(job_id: str) -> ZoteroImportJobStatusResult:
+    try:
+        return get_zotero_import_job_request(job_id=job_id)
+    except Exception:
+        return create_internal_error_job_status_result()
 
 
 if __name__ == "__main__":

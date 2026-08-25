@@ -20,7 +20,7 @@ import server
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
-from zotero_jobs import ZoteroImportJobResult
+from zotero_jobs import ZoteroImportJobResult, ZoteroImportJobStatusResult
 from zotero_status import ZoteroBridgeStatus
 
 
@@ -44,6 +44,11 @@ EXPECTED_JOB = {
     "expiresAt": None,
     "message": None,
     "retryable": False,
+}
+
+EXPECTED_STATUS_JOB = {
+    **EXPECTED_JOB,
+    "state": "submitted",
 }
 
 SERVER_PATH = ADAPTER_DIR / "server.py"
@@ -200,6 +205,14 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(tool.annotations.destructiveHint, False)
         self.assertIs(tool.annotations.idempotentHint, True)
         self.assertIs(tool.annotations.openWorldHint, False)
+        self.assertNotIn(
+            "job_not_found",
+            tool.outputSchema["properties"]["status"]["enum"],
+        )
+        self.assertIn(
+            "pending_job_exists",
+            tool.outputSchema["properties"]["status"]["enum"],
+        )
         self.assertEqual(
             set(tool.inputSchema["properties"]),
             {
@@ -222,6 +235,52 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
             item_keys=["AAAA1111"],
             collection_key=None,
             recursive=False,
+        )
+
+    async def test_discovers_read_only_job_status_tool_and_calls_it(self) -> None:
+        fixed_job = ZoteroImportJobStatusResult(
+            status="ok",
+            jobId="123e4567-e89b-42d3-a456-426614174000",
+            state="submitted",
+            itemCount=2,
+            skippedCount=1,
+            createdAt=1_000,
+            updatedAt=1_100,
+            expiresAt=None,
+            message=None,
+            retryable=False,
+        )
+        with patch.object(
+            server,
+            "get_zotero_import_job_request",
+            return_value=fixed_job,
+        ) as get_request:
+            async with Client(server.mcp) as client:
+                tools = await client.list_tools()
+                tool = next(
+                    candidate
+                    for candidate in tools
+                    if candidate.name == "get_zotero_import_job"
+                )
+                result = await client.call_tool(
+                    "get_zotero_import_job",
+                    {"job_id": "123e4567-e89b-42d3-a456-426614174000"},
+                )
+
+        self.assertIs(tool.annotations.readOnlyHint, True)
+        self.assertIs(tool.annotations.destructiveHint, False)
+        self.assertIs(tool.annotations.idempotentHint, True)
+        self.assertIs(tool.annotations.openWorldHint, False)
+        self.assertEqual(set(tool.inputSchema["properties"]), {"job_id"})
+        self.assertEqual(set(tool.inputSchema["required"]), {"job_id"})
+        status_values = set(tool.outputSchema["properties"]["status"]["enum"])
+        self.assertIn("job_not_found", status_values)
+        self.assertNotIn("library_not_found", status_values)
+        self.assertNotIn("pending_job_exists", status_values)
+        self.assertFalse(result.is_error)
+        self.assertEqual(result.structured_content, EXPECTED_STATUS_JOB)
+        get_request.assert_called_once_with(
+            job_id="123e4567-e89b-42d3-a456-426614174000"
         )
 
     async def test_masks_unexpected_tool_errors(self) -> None:
@@ -264,6 +323,24 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
                         "library_id": 1,
                         "collection_key": "AAAA1111",
                     },
+                )
+
+        self.assertFalse(result.is_error)
+        self.assertEqual(result.structured_content["status"], "internal_error")
+        self.assertIsNone(result.structured_content["jobId"])
+        self.assertNotIn(secret, repr(result))
+
+    async def test_masks_unexpected_job_status_tool_errors(self) -> None:
+        secret = "/private/zotero/library/path"
+        with patch.object(
+            server,
+            "get_zotero_import_job_request",
+            side_effect=RuntimeError(secret),
+        ):
+            async with Client(server.mcp) as client:
+                result = await client.call_tool(
+                    "get_zotero_import_job",
+                    {"job_id": "123e4567-e89b-42d3-a456-426614174000"},
                 )
 
         self.assertFalse(result.is_error)
@@ -369,7 +446,11 @@ class StdioServerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             tool_names,
-            {"get_zotero_bridge_status", "stage_zotero_import_job"},
+            {
+                "get_zotero_bridge_status",
+                "stage_zotero_import_job",
+                "get_zotero_import_job",
+            },
         )
         self.assertFalse(bridge_result.is_error)
         self.assertEqual(bridge_result.structured_content, EXPECTED_STATUS)

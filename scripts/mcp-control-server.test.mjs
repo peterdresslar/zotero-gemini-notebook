@@ -17,11 +17,30 @@ const jobProtocolSource = await readFile(
   ),
   "utf8",
 );
+const jobStatusProtocolSource = await readFile(
+  new globalThis.URL("../src/modules/mcpJobStatusProtocol.js", import.meta.url),
+  "utf8",
+);
 
-test("registers only the two narrow authenticated local MCP control endpoints", () => {
+test("registers only the three narrow authenticated local MCP control endpoints", () => {
   assert.match(controlServerSource, /"\/notebooklm\/control\/v1\/auth-check"/u);
   assert.match(controlServerSource, /"\/notebooklm\/control\/v1\/jobs"/u);
-  assert.match(controlServerSource, /supportedMethods: \["POST"\]/u);
+  assert.match(
+    controlServerSource,
+    /"\/notebooklm\/control\/v1\/jobs\/status"/u,
+  );
+  assert.equal(
+    controlServerSource.match(/supportedMethods: \["POST"\]/gu)?.length,
+    3,
+  );
+  assert.match(
+    controlServerSource,
+    /supportedDataTypes: \[MCP_JOB_STATUS_CONTENT_TYPE\]/u,
+  );
+  assert.match(
+    controlServerSource,
+    /delete endpoints\[MCP_CONTROL_JOB_STATUS_PATH\]/u,
+  );
   assert.doesNotMatch(controlServerSource, /control\/v1\/info/u);
   assert.doesNotMatch(
     controlServerSource,
@@ -29,7 +48,7 @@ test("registers only the two narrow authenticated local MCP control endpoints", 
   );
   assert.doesNotMatch(
     controlServerSource,
-    /getStaged|claimStaged|stageSelected|control\/v1\/jobs\//u,
+    /getStaged|claimStaged|stageSelected|cancelJob|transitionJob/u,
   );
 });
 
@@ -88,6 +107,67 @@ test("create-job forces non-replacement input and returns an allowlisted job DTO
       jobProtocolSource.indexOf("export function canonicalJsonStringify"),
     ),
     /job\.(?:source|destination|origin|details|items|filePath)/u,
+  );
+});
+
+test("job-status authenticates a bounded raw vendor body before reading the job", () => {
+  assert.match(
+    jobStatusProtocolSource,
+    /application\/vnd\.zotero-gemini-notebook\.job-status\+json/u,
+  );
+  assert.match(jobStatusProtocolSource, /MAX_BODY_BYTES = 256/u);
+  assert.match(controlServerSource, /readMcpJobStatusContentLength/u);
+  assert.match(controlServerSource, /parseCanonicalJobStatusBody/u);
+
+  const handlerStart = controlServerSource.indexOf(
+    "async function handleMcpControlJobStatus",
+  );
+  const handlerEnd = controlServerSource.indexOf(
+    "function validateRequestEnvelope",
+    handlerStart,
+  );
+  const handler = controlServerSource.slice(handlerStart, handlerEnd);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  assert.ok(
+    handler.indexOf("readMcpRawRequestBody") <
+      handler.indexOf("verifyMcpAuthRequest"),
+  );
+  assert.ok(
+    handler.indexOf("verifyMcpAuthRequest") <
+      handler.indexOf("parseCanonicalJobStatusBody"),
+  );
+  assert.ok(
+    handler.indexOf("parseCanonicalJobStatusBody") <
+      handler.indexOf("getJob(input.jobId)"),
+  );
+  const successBodyIndex = handler.indexOf("createMcpJobStatusSuccessBody");
+  assert.ok(successBodyIndex >= 0);
+  assert.ok(
+    successBodyIndex <
+      handler.indexOf("createMcpAuthResponseSignature", successBodyIndex),
+  );
+});
+
+test("job-status returns only the signed allowlisted DTO or a fixed not-found error", () => {
+  assert.match(
+    jobStatusProtocolSource,
+    /return createMcpCreateJobSuccessBody\(job\)/u,
+  );
+  assert.match(
+    jobStatusProtocolSource,
+    /"code":"job_not_found","message":"The requested Zotero bridge job was not found\.","retryable":false/u,
+  );
+  assert.match(
+    controlServerSource,
+    /pathname: MCP_CONTROL_JOB_STATUS_PATH,\s*status: 200,\s*body: responseBody/u,
+  );
+  assert.match(
+    controlServerSource,
+    /createMcpJobNotFoundBody\(\)[\s\S]*pathname: MCP_CONTROL_JOB_STATUS_PATH,[\s\S]*status: 404,[\s\S]*MCP_AUTH_RESPONSE_SIGNATURE_HEADER/u,
+  );
+  assert.doesNotMatch(
+    jobStatusProtocolSource,
+    /job\.(?:source|origin|destination|details|requestId|items|filePath)/u,
   );
 });
 

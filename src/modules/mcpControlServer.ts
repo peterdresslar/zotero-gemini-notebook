@@ -1,5 +1,5 @@
 import { getPref } from "../utils/prefs";
-import { createJob } from "./bridgeJobs";
+import { createJob, getJob } from "./bridgeJobs";
 import {
   MCP_AUTH_RESPONSE_SIGNATURE_HEADER,
   McpAuthProtocolError,
@@ -17,11 +17,20 @@ import {
   rawBinaryStringToBytes,
   readMcpCreateJobContentLength,
 } from "./mcpJobControlProtocol.js";
+import {
+  MCP_JOB_STATUS_CONTENT_TYPE,
+  McpJobStatusProtocolError,
+  createMcpJobNotFoundBody,
+  createMcpJobStatusSuccessBody,
+  parseCanonicalJobStatusBody,
+  readMcpJobStatusContentLength,
+} from "./mcpJobStatusProtocol.js";
 import { readMcpLocalAuthorizationKey } from "./mcpLocalAuth";
 import { PRIVATE_RESPONSE_OPTIONS } from "./zoteroServerContract.js";
 
 export const MCP_CONTROL_AUTH_CHECK_PATH = "/notebooklm/control/v1/auth-check";
 export const MCP_CONTROL_CREATE_JOB_PATH = "/notebooklm/control/v1/jobs";
+export const MCP_CONTROL_JOB_STATUS_PATH = "/notebooklm/control/v1/jobs/status";
 
 const MCP_CONTROL_API_VERSION = 1;
 const MCP_AUTH_CONTENT_TYPE = "application/json";
@@ -39,6 +48,7 @@ type McpControlErrorCode =
   | "no_supported_attachments"
   | "pending_job_exists"
   | "idempotency_conflict"
+  | "job_not_found"
   | "source_limit_exceeded"
   | "temporarily_unavailable"
   | "internal_error";
@@ -95,11 +105,22 @@ McpControlCreateJobEndpoint.prototype = {
   init: handleMcpControlCreateJob,
 };
 
+function McpControlJobStatusEndpoint() {}
+McpControlJobStatusEndpoint.prototype = {
+  supportedMethods: ["POST"],
+  supportedDataTypes: [MCP_JOB_STATUS_CONTENT_TYPE],
+  permitBookmarklet: false,
+  allowRequestsFromUnsafeWebContent: false,
+  init: handleMcpControlJobStatus,
+};
+
 export function registerMcpControlEndpoints(): void {
   Zotero.Server.Endpoints[MCP_CONTROL_AUTH_CHECK_PATH] =
     McpControlAuthCheckEndpoint;
   Zotero.Server.Endpoints[MCP_CONTROL_CREATE_JOB_PATH] =
     McpControlCreateJobEndpoint;
+  Zotero.Server.Endpoints[MCP_CONTROL_JOB_STATUS_PATH] =
+    McpControlJobStatusEndpoint;
 }
 
 export function resetMcpControlReplayCache(): void {
@@ -113,6 +134,9 @@ export function unregisterMcpControlEndpoints(): void {
   }
   if (endpoints[MCP_CONTROL_CREATE_JOB_PATH] === McpControlCreateJobEndpoint) {
     delete endpoints[MCP_CONTROL_CREATE_JOB_PATH];
+  }
+  if (endpoints[MCP_CONTROL_JOB_STATUS_PATH] === McpControlJobStatusEndpoint) {
+    delete endpoints[MCP_CONTROL_JOB_STATUS_PATH];
   }
   resetMcpControlReplayCache();
 }
@@ -255,6 +279,85 @@ async function handleMcpControlCreateJob(
   }
 }
 
+async function handleMcpControlJobStatus(
+  request: McpControlRequest,
+): Promise<McpControlResponse> {
+  let key: Uint8Array | null = null;
+  try {
+    validateRequestEnvelope(request, MCP_CONTROL_JOB_STATUS_PATH);
+    if (
+      readHeader(request.headers, "content-type") !==
+        MCP_JOB_STATUS_CONTENT_TYPE ||
+      hasUnsupportedBodyEncoding(request.headers)
+    ) {
+      throw new McpJobStatusProtocolError(
+        "The job-status request representation is invalid",
+      );
+    }
+
+    const contentLength = readMcpJobStatusContentLength(request.headers);
+    const rawBody = readMcpRawRequestBody(request.data, contentLength);
+    if (getPref("mcp.enabled") !== true) {
+      return controlError({
+        status: 403,
+        code: "control_disabled",
+        message: "MCP support is disabled in Zotero.",
+        retryable: false,
+      });
+    }
+
+    key = await readMcpLocalAuthorizationKey();
+    const authenticatedRequest = await verifyMcpAuthRequest({
+      method: "POST",
+      pathname: MCP_CONTROL_JOB_STATUS_PATH,
+      contentType: MCP_JOB_STATUS_CONTENT_TYPE,
+      body: rawBody,
+      headers: request.headers,
+      key,
+      replayCache,
+      cryptoApi: getMcpControlCrypto(),
+    });
+
+    const input = parseCanonicalJobStatusBody(rawBody);
+    const job = getJob(input.jobId);
+    if (!job) {
+      const responseBody = createMcpJobNotFoundBody();
+      const responseSignature = await createMcpAuthResponseSignature({
+        timestamp: authenticatedRequest.timestamp,
+        nonce: authenticatedRequest.nonce,
+        method: "POST",
+        pathname: MCP_CONTROL_JOB_STATUS_PATH,
+        status: 404,
+        body: responseBody,
+        key,
+        cryptoApi: getMcpControlCrypto(),
+      });
+      return jsonTextResponse(404, responseBody, {
+        [MCP_AUTH_RESPONSE_SIGNATURE_HEADER]: responseSignature,
+      });
+    }
+
+    const responseBody = createMcpJobStatusSuccessBody(job);
+    const responseSignature = await createMcpAuthResponseSignature({
+      timestamp: authenticatedRequest.timestamp,
+      nonce: authenticatedRequest.nonce,
+      method: "POST",
+      pathname: MCP_CONTROL_JOB_STATUS_PATH,
+      status: 200,
+      body: responseBody,
+      key,
+      cryptoApi: getMcpControlCrypto(),
+    });
+    return jsonTextResponse(200, responseBody, {
+      [MCP_AUTH_RESPONSE_SIGNATURE_HEADER]: responseSignature,
+    });
+  } catch (error) {
+    return jobStatusProtocolErrorResponse(error);
+  } finally {
+    key?.fill(0);
+  }
+}
+
 function validateRequestEnvelope(
   request: McpControlRequest,
   expectedPathname: string,
@@ -353,10 +456,6 @@ function getMcpControlCrypto(): Crypto {
   return cryptoApi;
 }
 
-function jsonResponse(status: number, body: object): McpControlResponse {
-  return jsonTextResponse(status, JSON.stringify(body));
-}
-
 function jsonTextResponse(
   status: number,
   body: string,
@@ -373,7 +472,14 @@ function jsonTextResponse(
 function controlError(
   definition: McpControlErrorDefinition,
 ): McpControlResponse {
-  return jsonResponse(definition.status, {
+  return jsonTextResponse(
+    definition.status,
+    createControlErrorBody(definition),
+  );
+}
+
+function createControlErrorBody(definition: McpControlErrorDefinition): string {
+  return JSON.stringify({
     apiVersion: MCP_CONTROL_API_VERSION,
     error: {
       code: definition.code,
@@ -487,6 +593,57 @@ function createJobProtocolErrorResponse(error: unknown): McpControlResponse {
           status: 400,
           code: "invalid_request",
           message: "The job request is invalid.",
+          retryable: false,
+        });
+      case "BROWSER_REQUEST_REJECTED":
+      case "AUTHENTICATION_FAILED":
+        return authenticationFailed();
+      case "CRYPTO_UNAVAILABLE":
+        return temporarilyUnavailable();
+    }
+  }
+
+  if (
+    hasErrorCode(error, "LOCAL_AUTH_CRYPTO_UNAVAILABLE") ||
+    hasErrorCode(error, "LOCAL_AUTH_STORAGE_UNAVAILABLE")
+  ) {
+    return temporarilyUnavailable();
+  }
+  if (
+    hasErrorCode(error, "LOCAL_AUTH_KEY_MISSING") ||
+    hasErrorCode(error, "LOCAL_AUTH_KEY_INVALID")
+  ) {
+    return authenticationFailed();
+  }
+
+  return controlError({
+    status: 500,
+    code: "internal_error",
+    message: "The MCP control endpoint encountered an internal error.",
+    retryable: true,
+  });
+}
+
+function jobStatusProtocolErrorResponse(error: unknown): McpControlResponse {
+  if (
+    error instanceof McpJobStatusProtocolError ||
+    error instanceof McpJobControlProtocolError
+  ) {
+    return controlError({
+      status: 400,
+      code: "invalid_request",
+      message: "The job-status request is invalid.",
+      retryable: false,
+    });
+  }
+
+  if (error instanceof McpAuthProtocolError) {
+    switch (error.code) {
+      case "INVALID_REQUEST":
+        return controlError({
+          status: 400,
+          code: "invalid_request",
+          message: "The job-status request is invalid.",
           retryable: false,
         });
       case "BROWSER_REQUEST_REJECTED":

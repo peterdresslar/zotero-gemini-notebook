@@ -1,9 +1,10 @@
-"""Stage one narrow, authenticated Zotero-to-Gemini import job.
+"""Create and read narrow, authenticated Zotero-to-Gemini import jobs.
 
-The public operation creates only a Zotero staging job. It does not claim that
-Chrome created a Gemini Notebook or uploaded any source. Stable Zotero keys are
-sent only after the fixed authentication check proves that the live loopback
-server possesses the user's private local bridge key.
+The staging operation creates only a Zotero staging job; the read operation
+returns only its sanitized lifecycle snapshot. Neither claims that Chrome
+created a Gemini Notebook or verified any source. Stable Zotero keys and opaque
+job IDs are sent only after the fixed authentication check proves that the live
+loopback server possesses the user's private local bridge key.
 """
 
 from __future__ import annotations
@@ -38,7 +39,13 @@ from zotero_control import (
 CONTROL_JOB_PATH = "/notebooklm/control/v1/jobs"
 CONTROL_JOB_URL = f"http://127.0.0.1:23119{CONTROL_JOB_PATH}"
 CONTROL_JOB_CONTENT_TYPE = "application/vnd.zotero-gemini-notebook.job+json"
+CONTROL_JOB_STATUS_PATH = "/notebooklm/control/v1/jobs/status"
+CONTROL_JOB_STATUS_URL = f"http://127.0.0.1:23119{CONTROL_JOB_STATUS_PATH}"
+CONTROL_JOB_STATUS_CONTENT_TYPE = (
+    "application/vnd.zotero-gemini-notebook.job-status+json"
+)
 MAX_JOB_BODY_BYTES = 16 * 1024
+MAX_JOB_STATUS_BODY_BYTES = 256
 MAX_JOB_RESPONSE_BYTES = 16 * 1024
 
 _SAFE_INTEGER_MAX = 2**53 - 1
@@ -81,6 +88,19 @@ JobResultStatus = Literal[
     "source_limit_exceeded",
     "internal_error",
 ]
+JobStatusResultStatus = Literal[
+    "ok",
+    "invalid_request",
+    "key_unavailable",
+    "control_disabled",
+    "authentication_failed",
+    "temporarily_unavailable",
+    "unsupported",
+    "unavailable",
+    "invalid_response",
+    "job_not_found",
+    "internal_error",
+]
 
 
 @dataclass(frozen=True)
@@ -88,6 +108,22 @@ class ZoteroImportJobResult:
     """The complete allowlist returned by the staging MCP tool."""
 
     status: JobResultStatus
+    jobId: str | None
+    state: BridgeJobState | None
+    itemCount: int | None
+    skippedCount: int | None
+    createdAt: int | None
+    updatedAt: int | None
+    expiresAt: int | None
+    message: str | None
+    retryable: bool
+
+
+@dataclass(frozen=True)
+class ZoteroImportJobStatusResult:
+    """The complete allowlist returned by the read-only job-status tool."""
+
+    status: JobStatusResultStatus
     jobId: str | None
     state: BridgeJobState | None
     itemCount: int | None
@@ -194,6 +230,59 @@ _PREFLIGHT_FAILURES = frozenset(
     }
 )
 _JOB_STATES = frozenset(BridgeJobState.__args__)
+_CREATE_JOB_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "control_disabled",
+        "authentication_failed",
+        "temporarily_unavailable",
+        "library_not_found",
+        "collection_not_found",
+        "no_supported_attachments",
+        "pending_job_exists",
+        "idempotency_conflict",
+        "source_limit_exceeded",
+        "internal_error",
+    }
+)
+_JOB_STATUS_FAILURES: dict[str, _FailureDefinition] = {
+    code: _FAILURES[code]
+    for code in (
+        "invalid_request",
+        "key_unavailable",
+        "control_disabled",
+        "authentication_failed",
+        "temporarily_unavailable",
+        "unsupported",
+        "unavailable",
+        "invalid_response",
+        "internal_error",
+    )
+}
+_JOB_STATUS_FAILURES["job_not_found"] = _FailureDefinition(
+    "The requested Zotero import job was not found.",
+    False,
+    frozenset({404}),
+)
+_JOB_STATUS_FAILURES["unsupported"] = _FailureDefinition(
+    "The installed Zotero plugin does not support import-job status.",
+    False,
+    frozenset({404}),
+)
+_JOB_STATUS_FAILURES["internal_error"] = _FailureDefinition(
+    "The Zotero import job could not be read because of an internal error.",
+    True,
+    frozenset({500}),
+)
+_UNSIGNED_JOB_STATUS_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "control_disabled",
+        "authentication_failed",
+        "temporarily_unavailable",
+        "internal_error",
+    }
+)
 
 
 def stage_zotero_import_job(
@@ -272,10 +361,146 @@ def stage_zotero_import_job(
         return create_job_failure("unavailable")
 
 
+def get_zotero_import_job(*, job_id: str) -> ZoteroImportJobStatusResult:
+    """Read one sanitized import-job snapshot through authenticated control."""
+
+    try:
+        body = create_job_status_body(job_id=job_id)
+    except InvalidZoteroJobInput:
+        return create_job_status_failure("invalid_request")
+
+    # Authenticate the fixed listener before disclosing even an opaque job ID.
+    try:
+        preflight = check_zotero_control_authentication()
+    except Exception:
+        return create_job_status_failure("internal_error")
+    if preflight != "authenticated":
+        status = preflight if preflight in _PREFLIGHT_FAILURES else "invalid_response"
+        return create_job_status_failure(status)
+
+    try:
+        key = read_local_bridge_key()
+    except InvalidLocalBridgeKey:
+        return create_job_status_failure("key_unavailable")
+
+    timestamp = int(time.time())
+    nonce = _encode_base64url(secrets.token_bytes(16))
+    try:
+        request = create_job_status_request(
+            key,
+            body,
+            timestamp=timestamp,
+            nonce=nonce,
+        )
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            _NoRedirectHandler(),
+        )
+        with opener.open(request, timeout=CONTROL_TIMEOUT_SECONDS) as response:
+            response_body = _read_job_response_body(
+                response,
+                expected_status=200,
+                expected_url=CONTROL_JOB_STATUS_URL,
+            )
+            verify_control_response_signature(
+                key,
+                timestamp=timestamp,
+                nonce=nonce,
+                method="POST",
+                pathname=CONTROL_JOB_STATUS_PATH,
+                status=200,
+                body=response_body,
+                headers=response.headers,
+            )
+            return parse_job_status_success(
+                _parse_json_body(response_body),
+                expected_job_id=job_id,
+            )
+    except urllib.error.HTTPError as error:
+        return _map_job_status_http_error(
+            error,
+            key=key,
+            timestamp=timestamp,
+            nonce=nonce,
+        )
+    except (
+        InvalidControlResponse,
+        InvalidZoteroJobResponse,
+        TypeError,
+        ValueError,
+    ):
+        return create_job_status_failure("invalid_response")
+    except (http.client.HTTPException, OSError):
+        return create_job_status_failure("unavailable")
+
+
 def create_internal_error_job_result() -> ZoteroImportJobResult:
     """Return a fixed adapter-owned error without exception details."""
 
     return create_job_failure("internal_error")
+
+
+def create_internal_error_job_status_result() -> ZoteroImportJobStatusResult:
+    """Return a fixed status-tool error without exception details."""
+
+    return create_job_status_failure("internal_error")
+
+
+def create_job_status_body(*, job_id: str) -> bytes:
+    """Build the exact compact canonical body for one job-status lookup."""
+
+    if type(job_id) is not str or _JOB_ID_PATTERN.fullmatch(job_id) is None:
+        raise InvalidZoteroJobInput("job_id must be an opaque Zotero job ID")
+    body = json.dumps(
+        {"jobId": job_id},
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    if len(body) > MAX_JOB_STATUS_BODY_BYTES:
+        raise InvalidZoteroJobInput("The job-status request is too large")
+    return body
+
+
+def create_job_status_request(
+    key: bytes,
+    body: bytes,
+    *,
+    timestamp: int | None = None,
+    nonce: str | None = None,
+) -> urllib.request.Request:
+    """Create the fixed authenticated job-status POST."""
+
+    if (
+        type(body) is not bytes
+        or not body
+        or len(body) > MAX_JOB_STATUS_BODY_BYTES
+    ):
+        raise InvalidZoteroJobInput("The job-status request body is invalid")
+    try:
+        document = _parse_json_body(body)
+        if (
+            type(document) is not dict
+            or set(document) != {"jobId"}
+            or create_job_status_body(job_id=document.get("jobId")) != body
+        ):
+            raise InvalidZoteroJobInput(
+                "The job-status request body is not canonical"
+            )
+    except (InvalidZoteroJobInput, InvalidZoteroJobResponse):
+        raise InvalidZoteroJobInput(
+            "The job-status request body is not canonical"
+        ) from None
+    return _create_authenticated_job_request(
+        key,
+        body,
+        pathname=CONTROL_JOB_STATUS_PATH,
+        url=CONTROL_JOB_STATUS_URL,
+        content_type=CONTROL_JOB_STATUS_CONTENT_TYPE,
+        timestamp=timestamp,
+        nonce=nonce,
+    )
 
 
 def create_stage_job_body(
@@ -362,10 +587,33 @@ def create_stage_job_request(
 ) -> urllib.request.Request:
     """Create the fixed authenticated job POST without transmitting the key."""
 
-    if type(key) is not bytes or len(key) != 32:
-        raise InvalidLocalBridgeKey("Local bridge key has an invalid size")
     if type(body) is not bytes or not body or len(body) > MAX_JOB_BODY_BYTES:
         raise InvalidZoteroJobInput("The job request body is invalid")
+    return _create_authenticated_job_request(
+        key,
+        body,
+        pathname=CONTROL_JOB_PATH,
+        url=CONTROL_JOB_URL,
+        content_type=CONTROL_JOB_CONTENT_TYPE,
+        timestamp=timestamp,
+        nonce=nonce,
+    )
+
+
+def _create_authenticated_job_request(
+    key: bytes,
+    body: bytes,
+    *,
+    pathname: str,
+    url: str,
+    content_type: str,
+    timestamp: int | None,
+    nonce: str | None,
+) -> urllib.request.Request:
+    """Build one fixed-target signed vendor-body control request."""
+
+    if type(key) is not bytes or len(key) != 32:
+        raise InvalidLocalBridgeKey("Local bridge key has an invalid size")
     if timestamp is None:
         timestamp = int(time.time())
     if nonce is None:
@@ -376,17 +624,17 @@ def create_stage_job_request(
         timestamp=timestamp,
         nonce=nonce,
         method="POST",
-        pathname=CONTROL_JOB_PATH,
-        content_type=CONTROL_JOB_CONTENT_TYPE,
+        pathname=pathname,
+        content_type=content_type,
         body_sha256=body_sha256,
     )
     signature = _encode_base64url(hmac.digest(key, canonical, "sha256"))
     return urllib.request.Request(
-        CONTROL_JOB_URL,
+        url,
         data=body,
         headers={
             "Accept": "application/json",
-            "Content-Type": CONTROL_JOB_CONTENT_TYPE,
+            "Content-Type": content_type,
             "Content-Length": str(len(body)),
             "X-ZGN-Auth-Version": AUTH_VERSION,
             "X-ZGN-Timestamp": str(timestamp),
@@ -456,6 +704,32 @@ def parse_stage_job_success(document: object) -> ZoteroImportJobResult:
     )
 
 
+def parse_job_status_success(
+    document: object,
+    *,
+    expected_job_id: str,
+) -> ZoteroImportJobStatusResult:
+    """Validate and correlate one exact read-only job-status DTO."""
+
+    staged_result = parse_stage_job_success(document)
+    if staged_result.jobId != expected_job_id:
+        raise InvalidZoteroJobResponse(
+            "The job-status response identifies a different job"
+        )
+    return ZoteroImportJobStatusResult(
+        status="ok",
+        jobId=staged_result.jobId,
+        state=staged_result.state,
+        itemCount=staged_result.itemCount,
+        skippedCount=staged_result.skippedCount,
+        createdAt=staged_result.createdAt,
+        updatedAt=staged_result.updatedAt,
+        expiresAt=staged_result.expiresAt,
+        message=None,
+        retryable=False,
+    )
+
+
 def create_job_failure(status: str) -> ZoteroImportJobResult:
     """Build one fixed failure without carrying remote or exception text."""
 
@@ -477,18 +751,111 @@ def create_job_failure(status: str) -> ZoteroImportJobResult:
     )
 
 
-def _map_job_http_error(error: urllib.error.HTTPError) -> ZoteroImportJobResult:
+def create_job_status_failure(status: str) -> ZoteroImportJobStatusResult:
+    """Build one fixed status-tool failure without remote details."""
+
+    definition = _JOB_STATUS_FAILURES.get(status)
+    if definition is None or status == "ok":
+        definition = _JOB_STATUS_FAILURES["internal_error"]
+        status = "internal_error"
+    return ZoteroImportJobStatusResult(
+        status=status,  # type: ignore[arg-type]
+        jobId=None,
+        state=None,
+        itemCount=None,
+        skippedCount=None,
+        createdAt=None,
+        updatedAt=None,
+        expiresAt=None,
+        message=definition.message,
+        retryable=definition.retryable,
+    )
+
+
+def _map_job_status_http_error(
+    error: urllib.error.HTTPError,
+    *,
+    key: bytes,
+    timestamp: int,
+    nonce: str,
+) -> ZoteroImportJobStatusResult:
+    try:
+        if error.geturl() != CONTROL_JOB_STATUS_URL:
+            raise InvalidZoteroJobResponse("The job-status endpoint redirected")
+    except (AttributeError, TypeError, ValueError):
+        return create_job_status_failure("invalid_response")
+
+    if error.code == 404 and not _is_json_response(error):
+        with error:
+            pass
+        return create_job_status_failure("unsupported")
+
+    try:
+        with error:
+            body = _read_job_response_body(
+                error,
+                expected_status=error.code,
+                expected_url=CONTROL_JOB_STATUS_URL,
+            )
+            document = _parse_json_body(body)
+        code, retryable = _read_error_document(document)
+        definition = _JOB_STATUS_FAILURES[code]
+        if (
+            error.code not in definition.http_statuses
+            or retryable is not definition.retryable
+        ):
+            raise InvalidZoteroJobResponse(
+                "The job-status error mapping is invalid"
+            )
+
+        if code == "job_not_found":
+            verify_control_response_signature(
+                key,
+                timestamp=timestamp,
+                nonce=nonce,
+                method="POST",
+                pathname=CONTROL_JOB_STATUS_PATH,
+                status=404,
+                body=body,
+                headers=error.headers,
+            )
+        elif code not in _UNSIGNED_JOB_STATUS_ERROR_CODES:
+            raise InvalidZoteroJobResponse(
+                "The job-status error code is not allowed"
+            )
+    except (
+        KeyError,
+        InvalidControlResponse,
+        InvalidZoteroJobResponse,
+        TypeError,
+        ValueError,
+    ):
+        return create_job_status_failure("invalid_response")
+    return create_job_status_failure(code)
+
+
+def _map_job_http_error(
+    error: urllib.error.HTTPError,
+    *,
+    expected_url: str = CONTROL_JOB_URL,
+    allowed_codes: frozenset[str] = _CREATE_JOB_ERROR_CODES,
+) -> ZoteroImportJobResult:
     if error.code == 404 and not _is_json_response(error):
         return create_job_failure("unsupported")
     definition: _FailureDefinition
     try:
         with error:
-            body = _read_job_response_body(error, expected_status=error.code)
+            body = _read_job_response_body(
+                error,
+                expected_status=error.code,
+                expected_url=expected_url,
+            )
             document = _parse_json_body(body)
         code, retryable = _read_error_document(document)
         definition = _FAILURES[code]
         if (
-            error.code not in definition.http_statuses
+            code not in allowed_codes
+            or error.code not in definition.http_statuses
             or retryable is not definition.retryable
         ):
             raise InvalidZoteroJobResponse("The job error mapping is invalid")
@@ -519,13 +886,18 @@ def _read_error_document(document: object) -> tuple[str, bool]:
     return error["code"], error["retryable"]
 
 
-def _read_job_response_body(response: object, *, expected_status: int) -> bytes:
+def _read_job_response_body(
+    response: object,
+    *,
+    expected_status: int,
+    expected_url: str = CONTROL_JOB_URL,
+) -> bytes:
     status = getattr(response, "status", None)
     if status is None:
         status = response.getcode()
     if status != expected_status:
         raise InvalidZoteroJobResponse("The job endpoint returned a bad status")
-    if response.geturl() != CONTROL_JOB_URL:
+    if response.geturl() != expected_url:
         raise InvalidZoteroJobResponse("The job endpoint redirected")
 
     headers = response.headers

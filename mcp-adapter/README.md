@@ -3,22 +3,25 @@
 This directory contains the first runnable MCP slice for the connector. It is a
 repository-local developer preview, not the complete `0.4.0` workflow.
 
-The adapter exposes two deliberately narrow tools:
+The adapter exposes three deliberately narrow tools:
 
 - `get_zotero_bridge_status` reads Zotero's fixed local status endpoint and
   reports whether the installed plugin supports this diagnostic and whether the
-  user opted in; and
+  user opted in;
 - `stage_zotero_import_job` asks Zotero to resolve stable collection or item
   keys and place their supported attachments in the existing Chrome handoff
-  queue.
+  queue; and
+- `get_zotero_import_job` reads one previously returned opaque job ID and
+  reports only its sanitized lifecycle state, counts, and timestamps.
 
 The staging result contains only an opaque job ID, state, counts, and
 timestamps. It does not return source metadata or files, create a Gemini
 Notebook, or claim that Chrome uploaded anything. The user must still open the
 Chrome companion and click **Import**. After that click, the current companion
 binds its upload batch to the staged job and records `submitted`, `unverified`,
-or `failed` in Zotero. Autonomous Chrome wake-up, an MCP job-status tool,
-notebook URLs, retries, and verified completion remain future work.
+or `failed` in Zotero. The read-only status tool does not return source
+metadata, files, browser claim identifiers, or notebook URLs. Autonomous Chrome
+wake-up, retries, and visible-source verification remain future work.
 
 ## Set up the locked environment
 
@@ -134,6 +137,40 @@ in-memory state from **Tools → Developer → Run JavaScript**:
 
 Do not share the full result because it may contain stable Zotero source keys.
 After a successful Chrome handoff, inspect only that `state` is `submitted`.
+
+## Read an import job
+
+Use the opaque `jobId` returned by `stage_zotero_import_job`:
+
+```bash
+uv run --project mcp-adapter --locked fastmcp call \
+  mcp-adapter/server.py get_zotero_import_job \
+  --input-json \
+  '{"job_id":"123e4567-e89b-42d3-a456-426614174000"}' \
+  --json
+```
+
+The important lifecycle distinctions are:
+
+- `staged` is waiting for the Chrome companion; `claimed` means the companion
+  accepted responsibility for that exact job.
+- `submitted` means Chrome handed the files to Gemini's uploader. It does not
+  mean Gemini finished processing them or that the visible source list was
+  verified.
+- `verified` is reserved for a later positive comparison with Gemini's visible
+  sources. `verifying` and `verified` are future-facing states that the current
+  companion does not report.
+- `unverified` means submission could not be conclusively observed; `failed`
+  means the current handoff stopped with an error.
+- `cancelled`, `expired`, and `superseded` mean the job ended without verified
+  completion because it was stopped, exceeded its lifetime, or was replaced.
+
+The status lookup is read-only and returns the same allowlisted field set as
+staging: the opaque ID, current state, current counts, and timestamps. If Chrome
+claims only a selected subset, `itemCount` reflects that claimed subset. A
+`job_not_found` result means the in-memory job is no longer present—for example,
+after Zotero restarts or old terminal history is pruned. It is not evidence that
+the job ID never existed.
 
 The first beta scans at most 256 candidate items and 1,000 collections, admits
 at most 50 supported sources, rejects any source larger than 200,000,000 bytes,
