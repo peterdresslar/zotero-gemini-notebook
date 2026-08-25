@@ -10,11 +10,18 @@ import {
 import { toSizedStagedItem } from "./items";
 import type { CreateBridgeJobInput } from "../types";
 import type { BridgeJobJson, BridgeJobSnapshot } from "./bridgeJobStore.js";
+import type { ChromeJobEvent } from "./chromeJobEventProtocol.js";
+import {
+  ChromeJobEventConflictError,
+  reportChromeJobEventToStore,
+} from "./chromeJobEventState.js";
 
 interface ResolvedItems {
   items: Zotero.Item[];
   skippedCount: number;
 }
+
+export { ChromeJobEventConflictError } from "./chromeJobEventState.js";
 
 export async function createJob(
   input: CreateBridgeJobInput,
@@ -102,6 +109,14 @@ export function getActiveJob(): BridgeJobSnapshot | null {
 export function cancelJob(jobId: string): BridgeJobSnapshot {
   assertJobId(jobId);
   return bridgeJobStore.cancel(jobId);
+}
+
+export function reportChromeJobEvent(
+  jobId: string,
+  claimId: string,
+  event: ChromeJobEvent,
+): BridgeJobSnapshot {
+  return reportChromeJobEventToStore(bridgeJobStore, jobId, claimId, event);
 }
 
 export const bridgeApi = Object.freeze({

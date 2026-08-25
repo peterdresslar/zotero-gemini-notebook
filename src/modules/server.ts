@@ -195,11 +195,11 @@ export function registerEndpoints() {
     },
   };
 
-  // Clear staged items (called by Chrome extension after successful upload)
+  // Legacy claim endpoint retained for older Chrome companions.
   const clearEndpoint = (Zotero.Server.Endpoints["/notebooklm/clear"] =
     function () {});
   clearEndpoint.prototype = {
-    supportedMethods: [ZOTERO_MUTATION_METHOD, "OPTIONS"],
+    supportedMethods: [ZOTERO_MUTATION_METHOD, "DELETE", "OPTIONS"],
     supportedDataTypes: ["application/json"],
     init: function (data: any, sendResponseCallback: Function) {
       try {
@@ -214,9 +214,9 @@ export function registerEndpoints() {
           return;
         }
 
-        // Legacy Chrome companions omit jobId. Updated companions bind the
-        // claim to the batch they loaded so a stale popup cannot consume a
-        // newer staged job. Claiming does not imply Gemini accepted the files.
+        // Older companions may omit jobId. Transitional companions bind the
+        // claim to the batch they loaded. Current job-bound companions use the
+        // strict /job-claim endpoint instead.
         const claimed = claimStagedJob(jobId, attachmentIds);
         if (jobId !== undefined && !claimed) {
           sendJSON(sendResponseCallback, 409, {

@@ -91,7 +91,14 @@ export interface BridgeJobStore {
   claimActive(
     expectedJobId?: string,
     selectedAttachmentIds?: number[],
+    claimId?: string,
   ): BridgeJobSnapshot | null;
+  reportClaimedEvent(
+    jobId: string,
+    claimId: string,
+    state: "submitted" | "unverified" | "failed",
+    details?: BridgeJobJson,
+  ): BridgeJobSnapshot;
   transition(
     jobId: string,
     state: BridgeJobState,

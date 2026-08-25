@@ -44,8 +44,13 @@ export function isReady(): boolean {
 export function claimStagedJob(
   expectedJobId?: string,
   selectedAttachmentIds?: number[],
+  claimId?: string,
 ): ReturnType<typeof bridgeJobStore.claimActive> {
-  return bridgeJobStore.claimActive(expectedJobId, selectedAttachmentIds);
+  return bridgeJobStore.claimActive(
+    expectedJobId,
+    selectedAttachmentIds,
+    claimId,
+  );
 }
 
 export function getCurrentStagedJob(): ReturnType<

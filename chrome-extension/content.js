@@ -16,21 +16,25 @@ const dialogUploadStatus = globalThis.ZoteroDialogUploadStatus.createController(
   },
 );
 const UPLOAD_BATCH_EXPIRY_MS = 5 * 60 * 1000;
-let pendingUploadBatch = null;
-let pendingUploadBatchTimer = null;
-let uploadInProgress = false;
+const JOB_CLAIM_ACTION = "claimZoteroJob";
+const JOB_LIFECYCLE_ACTION = "reportJobLifecycle";
+const JOB_LIFECYCLE_REPORT_WARNING =
+  "Gemini Notebook received the files, but Zotero could not update the import status.";
+const POPUP_URL = chrome.runtime.getURL("popup.html");
+const uploadHandoff = globalThis.ZoteroUploadHandoff.createController({
+  createBatch,
+  claimJob: claimUploadJob,
+  startUpload: startClaimedUpload,
+  isAuthorizedSender: isAllowedPopupSender,
+  expiryMs: UPLOAD_BATCH_EXPIRY_MS,
+});
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.action === "uploadBatchBegin") {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.action === "uploadBatchBegin") {
     try {
-      if (uploadInProgress) {
-        throw new Error("An upload is already in progress");
-      }
+      uploadHandoff.begin(msg, sender);
       dialogUploadStatus.hide();
       hideAssistedUploadPrompt();
-      clearPendingUploadBatch();
-      pendingUploadBatch = createBatch(msg.batchId, msg.fileCount);
-      schedulePendingUploadBatchExpiry();
       sendResponse({ success: true });
     } catch (error) {
       sendResponse({ success: false, error: error.message });
@@ -38,13 +42,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return;
   }
 
-  if (msg.action === "uploadBatchChunk") {
+  if (msg?.action === "uploadBatchChunk") {
     try {
-      if (!pendingUploadBatch) {
-        throw new Error("No upload batch is ready to receive data");
-      }
-      pendingUploadBatch.addChunk(msg);
-      schedulePendingUploadBatchExpiry();
+      uploadHandoff.addChunk(msg, sender);
       sendResponse({ success: true });
     } catch (error) {
       sendResponse({ success: false, error: error.message });
@@ -52,61 +52,61 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return;
   }
 
-  if (msg.action === "uploadBatchAbort") {
-    if (pendingUploadBatch?.batchId === msg.batchId) {
-      clearPendingUploadBatch();
+  if (msg?.action === "uploadBatchAbort") {
+    try {
+      uploadHandoff.abort(msg.batchId, sender);
       dialogUploadStatus.hide();
       hideAssistedUploadPrompt();
-    }
-    sendResponse({ success: true });
-    return;
-  }
-
-  if (msg.action === "uploadBatchCommit") {
-    try {
-      if (!pendingUploadBatch) {
-        throw new Error("No upload batch is ready to commit");
-      }
-      if (pendingUploadBatch.batchId !== msg.batchId) {
-        throw new Error("Upload batch identifier does not match");
-      }
-      const files = pendingUploadBatch.finalize();
-      clearPendingUploadBatch();
-      uploadInProgress = true;
       sendResponse({ success: true });
-      setTimeout(() => {
-        void uploadBatch(files)
-          .catch((error) => {
-            console.error("[Zotero content] Upload failed:", error);
-          })
-          .finally(() => {
-            uploadInProgress = false;
-          });
-      }, 0);
     } catch (error) {
       sendResponse({ success: false, error: error.message });
     }
     return;
   }
 
-  if (msg.action === "ping") {
-    sendResponse({ ready: true });
+  if (msg?.action === "uploadBatchCommit") {
+    void uploadHandoff.commit(msg.batchId, sender).then(
+      () => sendResponse({ success: true }),
+      (error) => sendResponse({ success: false, error: error.message }),
+    );
+    return true;
+  }
+
+  if (msg?.action === "ping") {
+    if (!isAllowedPopupSender(sender)) return;
+    sendResponse(globalThis.ZoteroUploadHandoff.createPingResponse());
     return;
   }
 });
 
-function schedulePendingUploadBatchExpiry() {
-  if (pendingUploadBatchTimer) clearTimeout(pendingUploadBatchTimer);
-  pendingUploadBatchTimer = setTimeout(() => {
-    console.warn("[Zotero content] Discarding an incomplete upload batch");
-    clearPendingUploadBatch();
-  }, UPLOAD_BATCH_EXPIRY_MS);
+function isAllowedPopupSender(sender) {
+  return globalThis.ZoteroUploadHandoff.isAllowedPopupSender({
+    sender,
+    extensionId: chrome.runtime.id,
+    popupUrl: POPUP_URL,
+  });
 }
 
-function clearPendingUploadBatch() {
-  if (pendingUploadBatchTimer) clearTimeout(pendingUploadBatchTimer);
-  pendingUploadBatchTimer = null;
-  pendingUploadBatch = null;
+async function claimUploadJob(job) {
+  const response = await chrome.runtime.sendMessage({
+    action: JOB_CLAIM_ACTION,
+    attachmentIds: job.attachmentIds,
+    claimId: job.claimId,
+    jobId: job.jobId,
+  });
+  if (!response?.success) {
+    throw new Error("Zotero did not accept the upload job");
+  }
+}
+
+function startClaimedUpload({ files, job, complete }) {
+  setTimeout(() => {
+    void uploadBatch(files, job)
+      .catch(() => {
+        console.error("[Zotero content] Upload failed");
+      })
+      .finally(complete);
+  }, 0);
 }
 
 const UPLOAD_CONTROL_LABELS = [
@@ -128,11 +128,12 @@ const UPLOAD_TIMEOUT_ERROR_CODE = "zotero-upload-timeout";
 let assistedClickCleanup = null;
 
 window.addEventListener("pagehide", () => {
+  uploadHandoff.dispose();
   hideAssistedUploadPrompt();
   dialogUploadStatus.hide();
 });
 
-async function uploadBatch(files) {
+async function uploadBatch(files, job) {
   if (!files || files.length === 0) {
     throw new Error("No files to upload");
   }
@@ -144,28 +145,52 @@ async function uploadBatch(files) {
       dialogUploadStatus.setAdding({ createdNotebook: false });
     }
     await uploadFilesIntoCurrentNotebook(files);
-    dialogUploadStatus.hide();
+    const reported = await reportJobLifecycle(job, "submitted");
+    if (reported) {
+      dialogUploadStatus.hide();
+    } else {
+      dialogUploadStatus.showError(JOB_LIFECYCLE_REPORT_WARNING);
+    }
   } catch (error) {
     hideAssistedUploadPrompt();
     let message;
     if (error.code === UPLOAD_TIMEOUT_ERROR_CODE) {
+      await reportJobLifecycle(job, "unverified");
       console.warn(
         "[Zotero content] Upload timed out before NotebookLM confirmed file injection",
       );
       message =
         "Zotero did not get a successful response from Gemini Notebook. If the files are still missing, open Add sources and try the import again.";
     } else if (!startedFromNotebookDetail && isNotebookDetailPage()) {
+      await reportJobLifecycle(job, "failed");
       message =
         "Created a new notebook in Gemini Notebook, but Zotero had trouble adding files. Try importing again from this notebook page.";
     } else if (!startedFromNotebookDetail) {
+      await reportJobLifecycle(job, "failed");
       message =
         "Zotero had trouble creating a new notebook in Gemini Notebook. Open or create a notebook and try importing again.";
     } else {
+      await reportJobLifecycle(job, "failed");
       message =
         "Zotero had trouble adding files to Gemini Notebook. Try importing again from this notebook page.";
     }
     dialogUploadStatus.showError(message);
     throw error;
+  }
+}
+
+async function reportJobLifecycle(job, event) {
+  if (!job) return true;
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: JOB_LIFECYCLE_ACTION,
+      claimId: job.claimId,
+      event,
+      jobId: job.jobId,
+    });
+    return response?.success === true;
+  } catch {
+    return false;
   }
 }
 

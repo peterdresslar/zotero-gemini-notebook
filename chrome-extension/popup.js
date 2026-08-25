@@ -3,7 +3,12 @@ import {
   COMPANION_COMPATIBILITY,
   getCompatibilityWarningCopy,
 } from "./compatibility.js";
-import { clearStagedJob, createStagedFileRequest } from "./bridge-requests.js";
+import {
+  clearStagedJob,
+  createStagedFileRequest,
+  shouldUseLegacyPopupClear,
+} from "./bridge-requests.js";
+import "./upload-handoff.js";
 
 const ZOTERO_BASE = "http://127.0.0.1:23119/notebooklm";
 const ZOTERO_REQUEST_HEADERS = { "zotero-allowed-request": "1" };
@@ -14,6 +19,8 @@ const ZOTERO_JSON_HEADERS = {
   "Content-Type": "application/json",
 };
 const { splitBase64IntoChunks } = globalThis.ZoteroUploadTransfer;
+const { PROTOCOL_VERSION: JOB_LIFECYCLE_PROTOCOL_VERSION } =
+  globalThis.ZoteroUploadHandoff;
 
 let stagedItems = [];
 let selectedIds = new Set();
@@ -212,7 +219,18 @@ async function doImport() {
 
   // Verify content script is loaded
   try {
-    await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+    const ping = await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+    if (
+      jobId &&
+      ping?.lifecycleProtocolVersion !== JOB_LIFECYCLE_PROTOCOL_VERSION
+    ) {
+      progressText.textContent =
+        "The Gemini Notebook tab is using an older connector. Refresh the tab and try again.";
+      progressFill.style.width = "0%";
+      btn.disabled = false;
+      btn.textContent = `Import ${toImport.length} sources to Gemini Notebook`;
+      return;
+    }
   } catch {
     progressText.textContent =
       "Content script not loaded — please refresh the Gemini Notebook tab and try again.";
@@ -230,6 +248,8 @@ async function doImport() {
     await sendUploadTransferMessage(tab.id, {
       action: "uploadBatchBegin",
       batchId,
+      jobId,
+      attachmentIds: toImport.map((item) => item.attachmentId),
       fileCount: toImport.length,
     });
     batchStarted = true;
@@ -275,15 +295,18 @@ async function doImport() {
     batchStarted = false;
     batchCommitted = true;
 
-    // The content script now holds the complete batch. Clear staging only
-    // after commit succeeds, then close the popup so Gemini Notebook can run.
-    await clearStagedJob({
-      fetchImpl: fetch,
-      url: `${ZOTERO_BASE}/clear`,
-      headers: ZOTERO_JSON_HEADERS,
-      jobId,
-      attachmentIds: toImport.map((item) => item.attachmentId),
-    });
+    // Job-bound batches are claimed by the content script through the
+    // extension worker before upload starts. Older Zotero releases have no job
+    // ID and retain the legacy popup clear behavior.
+    if (shouldUseLegacyPopupClear(jobId)) {
+      await clearStagedJob({
+        fetchImpl: fetch,
+        url: `${ZOTERO_BASE}/clear`,
+        headers: ZOTERO_REQUEST_HEADERS,
+        jobId,
+        attachmentIds: toImport.map((item) => item.attachmentId),
+      });
+    }
 
     // Close the popup so NotebookLM regains focus and Angular can run.
     // A small delay lets the sendMessage dispatch first.

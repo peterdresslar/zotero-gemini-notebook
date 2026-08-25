@@ -183,6 +183,7 @@ testing to what changed:
 | Gemini Notebook host, permission, or DOM automation              | Exercise the affected page and confirm sources actually appear                           |
 | Chunking or transfer protocol                                    | Include a combined batch larger than Chrome's 64 MiB message limit                       |
 | MCP adapter, local authorization, or job-control endpoint        | Run `test:mcp`, then exercise the affected tool with the public candidate and Zotero     |
+| Chrome job claim, lifecycle worker, or callback endpoint         | Import an MCP-staged job and confirm the same job advances to `submitted` in Zotero      |
 | Add-on ID, updater URL, manifest format, or Zotero compatibility | Perform an actual previous-version Zotero update, restart, and preference-retention test |
 
 For a routine patch with unchanged updater identity and compatibility, a prior

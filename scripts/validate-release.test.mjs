@@ -19,6 +19,10 @@ const zoteroRuntimeBundle = [
   "/notebooklm/control/v1/auth-check",
   "/notebooklm/control/v1/jobs",
   "application/vnd.zotero-gemini-notebook.job+json",
+  "/notebooklm/job-claim",
+  "/notebooklm/job-event",
+  "application/vnd.zotero-gemini-notebook.job-claim+json",
+  "application/vnd.zotero-gemini-notebook.job-event+json",
   "maxByteSize",
 ].join("\n");
 
@@ -44,10 +48,16 @@ const compatibility = {
 
 const chromeManifest = {
   version: "0.3.4",
+  permissions: ["activeTab"],
   host_permissions: [
+    "http://127.0.0.1:23119/*",
     "https://notebook.google.com/*",
     "https://notebooklm.google.com/*",
   ],
+  background: {
+    service_worker: "background.js",
+    type: "module",
+  },
   content_scripts: [
     {
       matches: [
@@ -56,6 +66,7 @@ const chromeManifest = {
       ],
       js: [
         "upload-transfer.js",
+        "upload-handoff.js",
         "dialog-upload-status.js",
         "gemini-controls.js",
         "content.js",
@@ -81,9 +92,12 @@ const popupHTML = `
 const chromePackageEntries = [
   "manifest.json",
   "upload-transfer.js",
+  "upload-handoff.js",
   "dialog-upload-status.js",
   "bridge-requests.js",
   "gemini-controls.js",
+  "job-lifecycle.js",
+  "background.js",
   "content.js",
   "injector.js",
   "popup.html",
@@ -209,6 +223,8 @@ test("Zotero runtime package retains the MCP staging boundary", () => {
   for (const marker of [
     "ZGN-LOCAL-AUTH-V1",
     "/notebooklm/control/v1/jobs",
+    "/notebooklm/job-claim",
+    "/notebooklm/job-event",
     "maxByteSize",
   ]) {
     nodeAssert.throws(
@@ -223,7 +239,10 @@ test("Zotero runtime package retains the MCP staging boundary", () => {
 });
 
 test("Chrome runtime package covers current and legacy notebook hosts", () => {
-  for (const hostPattern of chromeManifest.host_permissions) {
+  for (const hostPattern of [
+    "https://notebook.google.com/*",
+    "https://notebooklm.google.com/*",
+  ]) {
     nodeAssert.throws(
       () =>
         assertChromeRuntimePackage(
@@ -236,7 +255,7 @@ test("Chrome runtime package covers current and legacy notebook hosts", () => {
           popupHTML,
           chromePackageEntries,
         ),
-      /must grant host permission/,
+      /must grant exactly the fixed Zotero and Gemini Notebook host permissions/u,
     );
 
     for (const scriptFilename of ["content.js", "injector.js"]) {
@@ -265,12 +284,47 @@ test("Chrome runtime package covers current and legacy notebook hosts", () => {
   }
 });
 
+test("Chrome lifecycle retains only the fixed host and messaging boundary", () => {
+  for (const hostPermissions of [
+    chromeManifest.host_permissions.filter(
+      (host) => host !== "http://127.0.0.1:23119/*",
+    ),
+    [...chromeManifest.host_permissions, "http://localhost/*"],
+    [...chromeManifest.host_permissions, chromeManifest.host_permissions[0]],
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertChromeRuntimePackage(
+          { ...chromeManifest, host_permissions: hostPermissions },
+          popupHTML,
+          chromePackageEntries,
+        ),
+      /must grant exactly the fixed Zotero and Gemini Notebook host permissions/u,
+    );
+  }
+
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          externally_connectable: { matches: ["<all_urls>"] },
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must not expose externally_connectable messaging/u,
+  );
+});
+
 test("Chrome runtime package rejects missing content helpers", () => {
   for (const helperFilename of [
     "upload-transfer.js",
+    "upload-handoff.js",
     "dialog-upload-status.js",
     "bridge-requests.js",
     "gemini-controls.js",
+    "job-lifecycle.js",
   ]) {
     nodeAssert.throws(
       () =>
@@ -282,6 +336,51 @@ test("Chrome runtime package rejects missing content helpers", () => {
       new RegExp(`must include ${helperFilename.replace(".", "\\.")}`),
     );
   }
+});
+
+test("Chrome runtime package registers the lifecycle service worker", () => {
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        { ...chromeManifest, background: undefined },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must register background\.js as its service worker/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          background: { service_worker: "background.js" },
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must load background\.js as a module/u,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        chromeManifest,
+        popupHTML,
+        chromePackageEntries.filter((entry) => entry !== "background.js"),
+      ),
+    /must include background\.js/u,
+  );
+});
+
+test("Chrome lifecycle does not add extension permissions", () => {
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        { ...chromeManifest, permissions: ["activeTab", "storage"] },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /must retain only the activeTab extension permission/u,
+  );
 });
 
 test("Chrome runtime package includes its declared content scripts", () => {
@@ -342,7 +441,7 @@ test("Chrome content script loads its helpers before content.js", () => {
           content_scripts: [
             {
               ...chromeManifest.content_scripts[0],
-              js: ["upload-transfer.js", "content.js"],
+              js: ["upload-transfer.js", "upload-handoff.js", "content.js"],
             },
           ],
         },
@@ -360,8 +459,8 @@ test("Chrome content script loads its helpers before content.js", () => {
             {
               ...chromeManifest.content_scripts[0],
               js: [
-                "dialog-upload-status.js",
                 "upload-transfer.js",
+                "dialog-upload-status.js",
                 "gemini-controls.js",
                 "content.js",
               ],
@@ -371,7 +470,30 @@ test("Chrome content script loads its helpers before content.js", () => {
         popupHTML,
         chromePackageEntries,
       ),
-    /upload-transfer\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+    /must load upload-handoff\.js with content\.js/,
+  );
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        {
+          ...chromeManifest,
+          content_scripts: [
+            {
+              ...chromeManifest.content_scripts[0],
+              js: [
+                "dialog-upload-status.js",
+                "upload-transfer.js",
+                "upload-handoff.js",
+                "gemini-controls.js",
+                "content.js",
+              ],
+            },
+          ],
+        },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /upload-transfer\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
   );
   nodeAssert.throws(
     () =>
@@ -383,6 +505,7 @@ test("Chrome content script loads its helpers before content.js", () => {
               ...chromeManifest.content_scripts[0],
               js: [
                 "upload-transfer.js",
+                "upload-handoff.js",
                 "dialog-upload-status.js",
                 "content.js",
               ],
@@ -404,6 +527,7 @@ test("Chrome content script loads its helpers before content.js", () => {
               ...chromeManifest.content_scripts[0],
               js: [
                 "upload-transfer.js",
+                "upload-handoff.js",
                 "dialog-upload-status.js",
                 "content.js",
                 "gemini-controls.js",
@@ -414,7 +538,7 @@ test("Chrome content script loads its helpers before content.js", () => {
         popupHTML,
         chromePackageEntries,
       ),
-    /upload-transfer\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
+    /upload-transfer\.js, upload-handoff\.js, dialog-upload-status\.js, gemini-controls\.js, and content\.js in that order/,
   );
 });
 

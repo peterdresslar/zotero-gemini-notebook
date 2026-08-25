@@ -192,7 +192,10 @@ read-only connector-status tool and an authenticated staging tool for early
 testing. The staging tool can resolve stable Zotero collection or item keys
 into the same bounded handoff queue used by the existing workflow. It does not
 create a Gemini Notebook or upload sources: the user must still complete the
-handoff from the Chrome companion. See the
+handoff from the Chrome companion. The development companion now keeps the
+opaque job identity through that handoff and records a truthful submitted or
+fixed non-success state in Zotero, but final source verification and MCP job
+status remain future work. See the
 [adapter testing guide](mcp-adapter/README.md) and
 [MCP Bridge Architecture](docs/mcp-bridge.md).
 

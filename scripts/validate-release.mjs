@@ -25,9 +25,12 @@ const stablePackageName = "zotero-gemini-notebook";
 const legacyRepository = "peterdresslar/zotero-notebooklm";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
+const uploadHandoffFilename = "upload-handoff.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
 const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
+const jobLifecycleFilename = "job-lifecycle.js";
+const backgroundFilename = "background.js";
 const zoteroRuntimeBundleEntry = "content/scripts/zoteroNotebookLM.js";
 
 function assert(condition, message) {
@@ -326,11 +329,18 @@ function assertChromeRuntimePackage(
     "https://notebook.google.com/*",
     "https://notebooklm.google.com/*",
   ];
+  const requiredHostPatterns = [
+    "http://127.0.0.1:23119/*",
+    ...notebookHostPatterns,
+  ];
   const requiredRuntimeFilenames = [
     uploadTransferFilename,
+    uploadHandoffFilename,
     dialogUploadStatusFilename,
     bridgeRequestsFilename,
     geminiControlsFilename,
+    jobLifecycleFilename,
+    backgroundFilename,
     "content.js",
     "injector.js",
   ];
@@ -342,12 +352,35 @@ function assertChromeRuntimePackage(
     );
   }
 
-  for (const hostPattern of notebookHostPatterns) {
-    assert(
-      manifest.host_permissions?.includes(hostPattern),
-      `${description} manifest must grant host permission for ${hostPattern}`,
-    );
-  }
+  assert(
+    Array.isArray(manifest.host_permissions) &&
+      manifest.host_permissions.length === requiredHostPatterns.length &&
+      requiredHostPatterns.every((pattern) =>
+        manifest.host_permissions.includes(pattern),
+      ) &&
+      new Set(manifest.host_permissions).size === requiredHostPatterns.length,
+    `${description} manifest must grant exactly the fixed Zotero and Gemini Notebook host permissions`,
+  );
+
+  assert(
+    Array.isArray(manifest.permissions) &&
+      manifest.permissions.length === 1 &&
+      manifest.permissions[0] === "activeTab",
+    `${description} manifest must retain only the activeTab extension permission`,
+  );
+  assert(
+    manifest.externally_connectable === undefined,
+    `${description} manifest must not expose externally_connectable messaging`,
+  );
+
+  assert(
+    manifest.background?.service_worker === backgroundFilename,
+    `${description} manifest must register ${backgroundFilename} as its service worker`,
+  );
+  assert(
+    manifest.background?.type === "module",
+    `${description} manifest must load ${backgroundFilename} as a module`,
+  );
 
   const contentScript = manifest.content_scripts?.find((entry) =>
     entry.js?.includes("content.js"),
@@ -358,6 +391,7 @@ function assertChromeRuntimePackage(
   );
   const contentScriptIndex = contentScript.js.indexOf("content.js");
   const transferScriptIndex = contentScript.js.indexOf(uploadTransferFilename);
+  const handoffScriptIndex = contentScript.js.indexOf(uploadHandoffFilename);
   const dialogStatusScriptIndex = contentScript.js.indexOf(
     dialogUploadStatusFilename,
   );
@@ -373,6 +407,10 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${uploadTransferFilename} before content.js`,
   );
   assert(
+    handoffScriptIndex !== -1,
+    `${description} manifest must load ${uploadHandoffFilename} with content.js`,
+  );
+  assert(
     dialogStatusScriptIndex !== -1,
     `${description} manifest must load ${dialogUploadStatusFilename} with content.js`,
   );
@@ -381,11 +419,13 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${geminiControlsFilename} with content.js`,
   );
   assert(
-    transferScriptIndex < dialogStatusScriptIndex &&
+    transferScriptIndex < handoffScriptIndex &&
+      handoffScriptIndex < dialogStatusScriptIndex &&
       dialogStatusScriptIndex < geminiControlsScriptIndex &&
       geminiControlsScriptIndex < contentScriptIndex,
     `${description} manifest must load ${uploadTransferFilename}, ` +
-      `${dialogUploadStatusFilename}, ${geminiControlsFilename}, and content.js ` +
+      `${uploadHandoffFilename}, ${dialogUploadStatusFilename}, ` +
+      `${geminiControlsFilename}, and content.js ` +
       "in that order",
   );
   for (const hostPattern of notebookHostPatterns) {
@@ -476,6 +516,10 @@ function assertZoteroMcpRuntimePackage(
     "/notebooklm/control/v1/auth-check",
     "/notebooklm/control/v1/jobs",
     "application/vnd.zotero-gemini-notebook.job+json",
+    "/notebooklm/job-claim",
+    "/notebooklm/job-event",
+    "application/vnd.zotero-gemini-notebook.job-claim+json",
+    "application/vnd.zotero-gemini-notebook.job-event+json",
     "maxByteSize",
   ]) {
     assert(

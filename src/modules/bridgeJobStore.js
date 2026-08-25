@@ -34,7 +34,10 @@ const ALLOWED_TRANSITIONS = new Map([
     "staged",
     new Set(["claimed", "failed", "cancelled", "expired", "superseded"]),
   ],
-  ["claimed", new Set(["submitted", "failed", "cancelled", "expired"])],
+  [
+    "claimed",
+    new Set(["submitted", "unverified", "failed", "cancelled", "expired"]),
+  ],
   [
     "submitted",
     new Set([
@@ -54,7 +57,9 @@ const ALLOWED_TRANSITIONS = new Map([
 
 const DEFAULT_MAX_HISTORY = 100;
 const DEFAULT_CLAIMED_TTL_MS = 60 * 60 * 1000;
-const PRIVATE_METADATA_KEYS = new Set(["filepath", "items"]);
+const CLAIM_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const CLAIMED_EVENT_STATES = new Set(["submitted", "unverified", "failed"]);
+const PRIVATE_METADATA_KEYS = new Set(["claimid", "filepath", "items"]);
 const UNSAFE_METADATA_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export class BridgeJobStoreError extends Error {
@@ -216,10 +221,15 @@ export function createBridgeJobStore(options = {}) {
     });
   }
 
-  function claimActive(expectedJobId, selectedAttachmentIds) {
+  function claimActive(expectedJobId, selectedAttachmentIds, claimId) {
     expireJobs(readNow(now));
     const pending = getPendingRecord();
     if (expectedJobId !== undefined && !isNonemptyString(expectedJobId)) {
+      return null;
+    }
+    const normalizedClaimId =
+      claimId === undefined ? undefined : normalizeClaimId(claimId);
+    if (normalizedClaimId !== undefined && expectedJobId === undefined) {
       return null;
     }
 
@@ -230,6 +240,16 @@ export function createBridgeJobStore(options = {}) {
       if (expectedJobId === undefined) return null;
       const retained = jobs.get(expectedJobId);
       if (!retained || !FILE_ACCESS_STATES.has(retained.state)) return null;
+      if (normalizedClaimId !== undefined) {
+        if (
+          retained.state !== "claimed" ||
+          retained.claimId !== normalizedClaimId
+        ) {
+          return null;
+        }
+      } else if (retained.claimId !== undefined) {
+        return null;
+      }
       if (selectedAttachmentIds !== undefined) {
         const selected = selectItems(retained.items, selectedAttachmentIds);
         if (selected.length !== retained.items.length) return null;
@@ -241,8 +261,42 @@ export function createBridgeJobStore(options = {}) {
       pending.items = selectItems(pending.items, selectedAttachmentIds);
       pending.itemCount = pending.items.length;
     }
+    if (normalizedClaimId !== undefined) {
+      pending.claimId = normalizedClaimId;
+    }
 
     return transitionJob(pending.jobId, "claimed");
+  }
+
+  function reportClaimedEvent(jobId, claimId, state, details) {
+    if (!isNonemptyString(jobId)) {
+      throw invalidInput("jobId must be a nonempty string");
+    }
+    const normalizedClaimId = normalizeClaimId(claimId);
+    if (!CLAIMED_EVENT_STATES.has(state)) {
+      throw invalidInput(
+        `Unsupported claimed bridge job event: ${String(state)}`,
+      );
+    }
+    const safeDetails =
+      details === undefined ? undefined : sanitizeJson(details, "details");
+
+    expireJobs(readNow(now));
+    const job = jobs.get(jobId);
+    if (!job || job.claimId !== normalizedClaimId) {
+      throw new BridgeJobStoreError(
+        "INVALID_TRANSITION",
+        "Bridge job claim does not match the active claimant",
+      );
+    }
+    if (job.state === state) return snapshot(job);
+    if (job.state !== "claimed") {
+      throw new BridgeJobStoreError(
+        "INVALID_TRANSITION",
+        `Bridge job cannot report ${state} from ${job.state}`,
+      );
+    }
+    return transitionJob(jobId, state, safeDetails);
   }
 
   function transition(jobId, state, details) {
@@ -385,6 +439,7 @@ export function createBridgeJobStore(options = {}) {
     hasPendingAttachment,
     getAttachmentAccess,
     claimActive,
+    reportClaimedEvent,
     transition,
     cancel,
     reset,
@@ -478,6 +533,13 @@ function normalizeRequestId(value) {
     throw invalidInput("requestId must not exceed 128 characters");
   }
   return requestId;
+}
+
+function normalizeClaimId(value) {
+  if (typeof value !== "string" || !CLAIM_ID_PATTERN.test(value)) {
+    throw invalidInput("claimId must be a bounded safe ASCII string");
+  }
+  return value;
 }
 
 function normalizeItem(item, index) {

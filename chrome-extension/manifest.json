@@ -17,6 +17,10 @@
       "128": "icons/icon128.png"
     }
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -25,6 +29,7 @@
       ],
       "js": [
         "upload-transfer.js",
+        "upload-handoff.js",
         "dialog-upload-status.js",
         "gemini-controls.js",
         "content.js"

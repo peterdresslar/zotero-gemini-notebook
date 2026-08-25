@@ -15,8 +15,10 @@ The adapter exposes two deliberately narrow tools:
 The staging result contains only an opaque job ID, state, counts, and
 timestamps. It does not return source metadata or files, create a Gemini
 Notebook, or claim that Chrome uploaded anything. The user must still open the
-Chrome companion and click **Import**. Autonomous Chrome claiming, terminal job
-updates, notebook URLs, and verified completion remain future work.
+Chrome companion and click **Import**. After that click, the current companion
+binds its upload batch to the staged job and records `submitted`, `unverified`,
+or `failed` in Zotero. Autonomous Chrome wake-up, an MCP job-status tool,
+notebook URLs, retries, and verified completion remain future work.
 
 ## Set up the locked environment
 
@@ -61,35 +63,39 @@ items in Zotero, then use **Tools → Developer → Run JavaScript** to inspect
 their stable identifiers. For one selected collection:
 
 ```javascript
-const pane = Zotero.getMainWindow().ZoteroPane;
-const selected =
-  typeof pane.getSelectedCollections === "function"
-    ? pane.getSelectedCollections()
-    : [pane.getSelectedCollection()].filter(Boolean);
-return JSON.stringify(
-  selected.map((collection) => ({
-    library_id: collection.libraryID,
-    collection_key: collection.key,
-  })),
-  null,
-  2,
-);
+(() => {
+  const pane = Zotero.getMainWindow().ZoteroPane;
+  const selected =
+    typeof pane.getSelectedCollections === "function"
+      ? pane.getSelectedCollections()
+      : [pane.getSelectedCollection()].filter(Boolean);
+  return JSON.stringify(
+    selected.map((collection) => ({
+      library_id: collection.libraryID,
+      collection_key: collection.key,
+    })),
+    null,
+    2,
+  );
+})();
 ```
 
 For selected regular items from one library:
 
 ```javascript
-const items = Zotero.getMainWindow()
-  .ZoteroPane.getSelectedItems()
-  .filter((item) => item.isRegularItem());
-return JSON.stringify(
-  {
-    library_id: items[0]?.libraryID,
-    item_keys: items.map((item) => item.key),
-  },
-  null,
-  2,
-);
+(() => {
+  const items = Zotero.getMainWindow()
+    .ZoteroPane.getSelectedItems()
+    .filter((item) => item.isRegularItem());
+  return JSON.stringify(
+    {
+      library_id: items[0]?.libraryID,
+      item_keys: items.map((item) => item.key),
+    },
+    null,
+    2,
+  );
+})();
 ```
 
 These commands only display identifiers in Zotero's local result window. Do
@@ -112,7 +118,22 @@ instead of `collection_key`. Reuse a request ID only for the exact same
 normalized request; a retry then returns the existing job. A different request
 with the same ID is rejected. A successful result means only that Zotero staged
 the job. Confirm the count in the Chrome companion, click **Import**, and verify
-the sources in Gemini Notebook.
+the sources in Gemini Notebook. The companion reports `submitted` only after
+Gemini's uploader accepts the file injection; that state does not mean the
+sources have finished processing or passed visible-source verification.
+After reloading an updated unpacked companion, refresh any already-open Gemini
+Notebook tab before importing so its content script uses the same lifecycle
+protocol version.
+
+For developer diagnostics, copy the returned job ID and inspect the sanitized
+in-memory state from **Tools → Developer → Run JavaScript**:
+
+```javascript
+(() => JSON.stringify(Zotero.ZoteroNotebookLM.api.getJob("JOB_ID"), null, 2))();
+```
+
+Do not share the full result because it may contain stable Zotero source keys.
+After a successful Chrome handoff, inspect only that `state` is `submitted`.
 
 The first beta scans at most 256 candidate items and 1,000 collections, admits
 at most 50 supported sources, rejects any source larger than 200,000,000 bytes,

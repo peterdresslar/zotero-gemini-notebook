@@ -8,8 +8,9 @@ Gemini Notebook from Zotero-managed sources.
 > This document describes the target architecture and the internal foundations
 > for it. The current beta contains a repository-local adapter with one
 > read-only connector-status tool and one authenticated staging tool. It does
-> **not** autonomously create a Gemini Notebook, drive Chrome, or verify an
-> import.
+> **not** autonomously wake Chrome, create and verify a Gemini Notebook, or
+> expose job status through MCP. After the user starts the Chrome import, the
+> development companion now records the claimant-bound handoff state.
 
 ## Product Contract
 
@@ -94,6 +95,12 @@ authorized job, obtains only the files in that job's frozen allowlist, creates
 or opens the intended notebook, submits the files through Gemini's browser UI,
 and reports observations back to Zotero.
 
+The development companion binds that claim to an opaque per-upload identifier,
+so a second Gemini tab cannot claim the same staged job. It reports
+`submitted`, `unverified`, or `failed` after the user starts the import. The
+identifier stays private to the browser/Zotero handoff and is neither an MCP
+credential nor part of a public job snapshot.
+
 Gemini Notebook is still controlled through third-party DOM automation. Chrome
 therefore reports distinct handoff and verification events; it does not decide
 that message delivery or file-input injection equals success.
@@ -119,11 +126,12 @@ sanitized skipped results, and then freezes the set of allowed attachment
 records.
 
 That record allowlist prevents a second staging action or a guessed attachment
-identifier from expanding a job. It is not a byte snapshot: the current file is
-resolved from the same Zotero attachment record when Chrome requests it. If the
-user changes or removes that attachment before handoff, the bytes may change or
-the fetch may fail. Content hashing or a private path-and-identity snapshot is a
-separate pre-network design decision if stronger immutability is required.
+identifier from expanding a job. It is not a byte-content snapshot: the current
+file is resolved from the same Zotero attachment record when Chrome requests
+it. Zotero rechecks that it is a regular file and refuses a read that exceeds
+the private size bound frozen at staging. Same-size content changes are still
+possible; content hashing or a private identity snapshot is a separate design
+decision if stronger immutability is required.
 
 ## Job Semantics
 
@@ -163,8 +171,9 @@ private browser state do not belong in status.
 ## Pending-Job and Idempotency Rules
 
 The first controller intentionally supports one pending `staged` job slot. This
-keeps the attachment allowlist unambiguous without claiming that the current
-Chrome companion can report a complete job lifecycle.
+keeps the attachment allowlist unambiguous while the current Chrome companion
+reports only the claim and immediate handoff outcome, not a complete verified
+job lifecycle.
 
 - A request with a new idempotency key may create a job only under the
   controller's pending-slot rule.
@@ -186,12 +195,14 @@ Chrome companion can report a complete job lifecycle.
   superseded, expired, or otherwise terminal job cannot mutate a newer pending
   job.
 
-Clearing the slot on claim is a compatibility boundary for the current
-transitional Chrome handoff, which does not yet send terminal job callbacks.
-Once Chrome reports the full lifecycle, the autonomous controller can enforce
-one agent-controlled in-flight job as well as one pending slot. Until then,
-claimed jobs expire after one hour so repeated imports cannot retain attachment
-allowlists for the lifetime of the Zotero process.
+Clearing the slot on claim remains a compatibility boundary for the
+transitional Chrome handoff. The development companion sends claimant-bound
+`submitted`, `unverified`, or `failed` callbacks, but it does not yet verify the
+visible Gemini source list or acknowledge cancellation. A later autonomous
+controller can enforce one agent-controlled in-flight job as well as one
+pending slot. Until then, claimed jobs expire after one hour so repeated
+imports cannot retain attachment allowlists for the lifetime of the Zotero
+process.
 
 The first beta scans at most 256 candidate items and 1,000 collections,
 enforces at most 50 staged sources, 200,000,000 bytes per source, 200,000,000
@@ -254,10 +265,10 @@ this browser-request authorization boundary.
 ## Configuration, Diagnostic, and Staging Preview
 
 The current phase adds the user-facing configuration surface, a narrow
-read-only MCP diagnostic, and authenticated staging. The Zotero Tools menu
-provides **Gemini Notebook Connector** with separate **Export to Gemini
-Notebook...** and **Configure MCP...** actions. MCP support remains off by
-default.
+read-only MCP diagnostic, authenticated staging, and claimant-bound Chrome
+handoff reporting. The Zotero Tools menu provides **Gemini Notebook Connector**
+with separate **Export to Gemini Notebook...** and **Configure MCP...** actions.
+MCP support remains off by default.
 
 The configuration dialog may store Zotero-owned preferences, select a supported
 MCP client preset, and resolve or accept separate runtime-executable, adapter-
@@ -318,8 +329,8 @@ presents this as a generic local setup state; an explicit reset action appears
 only when recovery is needed. It never displays key material or its filesystem
 path.
 
-Every source or job-control endpoint must implement and preserve the same
-reviewed authenticated boundary. The bridge must:
+Every agent-facing source or job-control endpoint must implement and preserve
+the same reviewed authenticated boundary. The bridge must:
 
 - require explicit local opt-in and private local authorization;
 - authenticate every agent-control request and require a request-bound server
@@ -345,9 +356,12 @@ fixed vendor media type, a 16 KiB raw-body limit, HMAC verification over the
 exact bytes, and strict canonical parsing into an allowlisted schema only after
 verification. Future control calls must preserve that boundary.
 
-The existing human Chrome transport and any future authenticated control
-transport should remain separate enough that adding MCP does not turn a browser
-origin into an agent authority.
+The browser claim and lifecycle callbacks remain on the narrow Chrome transport:
+fixed vendor media types, bounded canonical bodies, a private claim identifier,
+the existing Zotero browser-request header, and no expanded extension
+permissions. They do not accept stable library keys or create jobs. This
+transport and authenticated agent control remain separate so adding MCP does
+not turn a browser origin into an agent authority.
 
 ## Road to `0.4.0`
 
@@ -367,9 +381,10 @@ be reviewed before the next one depends on it.
 4. **Authenticated job control:** add the first narrow authenticated staging
    endpoint and retain the same no-browser, no-CORS, log-safe boundary for later
    status and cancellation operations.
-5. **Chrome job identity:** extend the current fetch-and-clear job binding
-   through submission, failure, retry, and cancellation. Retain retryable state
-   instead of clearing it on message delivery.
+5. **Chrome job identity:** carry the opaque job identity through a
+   claimant-bound browser handoff and record `submitted`, `unverified`, or
+   `failed` without equating injection with verification. Upload retry and
+   cancellation semantics remain follow-up work.
 6. **Verification:** add autonomous claiming, new-notebook creation, and source
    list comparison so `verified` reflects visible Gemini state.
 7. **Workflow tools:** replace the current staging-only preview with the

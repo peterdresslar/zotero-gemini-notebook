@@ -17,6 +17,10 @@ const serverSource = await readFile(
 test("keeps Chrome clear requests on Zotero's supported mutation method", () => {
   assert.equal(ZOTERO_MUTATION_METHOD, "POST");
   assert.equal(STAGED_CLEAR_METHOD, ZOTERO_MUTATION_METHOD);
+  assert.match(
+    serverSource,
+    /supportedMethods: \[ZOTERO_MUTATION_METHOD, "DELETE", "OPTIONS"\]/u,
+  );
 });
 
 test("builds an allowlisted status response with strict MCP opt-in", () => {

@@ -5,11 +5,13 @@ import {
   clearStagedJob,
   createStagedClearRequest,
   createStagedFileRequest,
+  LEGACY_STAGED_CLEAR_METHOD,
   STAGED_CLEAR_METHOD,
 } from "../chrome-extension/bridge-requests.js";
 
-test("uses the POST method supported by Zotero's local server", () => {
+test("publishes current and legacy clear methods", () => {
   assert.equal(STAGED_CLEAR_METHOD, "POST");
+  assert.equal(LEGACY_STAGED_CLEAR_METHOD, "DELETE");
 });
 
 test("binds file reads to a job when the Zotero backend supplies one", () => {
@@ -62,7 +64,7 @@ test("sends a job-bound clear with the selected attachment IDs", async () => {
   ]);
 });
 
-test("sends an empty clear request when the pending response has no job ID", async () => {
+test("uses the released DELETE-without-body request when no job ID exists", async () => {
   let requestOptions;
   await clearStagedJob({
     fetchImpl: async (_url, options) => {
@@ -75,7 +77,10 @@ test("sends an empty clear request when the pending response has no job ID", asy
     attachmentIds: [42],
   });
 
-  assert.equal(requestOptions.body, "{}");
+  assert.deepEqual(requestOptions, {
+    method: "DELETE",
+    headers: {},
+  });
 });
 
 test("surfaces clear transport and response failures", async () => {

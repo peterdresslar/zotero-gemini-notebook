@@ -2,6 +2,12 @@ import { initLocale, getString } from "./utils/locale";
 import { getPref } from "./utils/prefs";
 import { registerEndpoints } from "./modules/server";
 import {
+  registerChromeJobClaimEndpoint,
+  registerChromeJobEventEndpoint,
+  unregisterChromeJobClaimEndpoint,
+  unregisterChromeJobEventEndpoint,
+} from "./modules/chromeJobEventServer";
+import {
   registerMcpControlEndpoints,
   unregisterMcpControlEndpoints,
 } from "./modules/mcpControlServer";
@@ -53,6 +59,8 @@ async function onStartup() {
 
   // Register browser-facing endpoints for Chrome extension communication.
   registerEndpoints();
+  registerChromeJobClaimEndpoint();
+  registerChromeJobEventEndpoint();
 
   if (getPref("mcp.enabled") === true) {
     try {
@@ -162,6 +170,8 @@ async function onMainWindowUnload(win: Window): Promise<void> {
 }
 
 function onShutdown(): void {
+  unregisterChromeJobEventEndpoint();
+  unregisterChromeJobClaimEndpoint();
   unregisterMcpControlEndpoints();
   stagingActionsInProgress.clear();
   cleanupManagedToolsMenu?.();
