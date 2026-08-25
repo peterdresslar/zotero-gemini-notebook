@@ -319,6 +319,8 @@ test("places one accessible status immediately before the dialog drop zone", () 
   assert.equal(panel.getAttribute("aria-live"), "polite");
   assert.equal(panel.getAttribute("aria-atomic"), "true");
   assert.equal(panel.style.pointerEvents, "none");
+  assert.equal(panel.style.marginBlock, "-20px 18px");
+  assert.equal(panel.style.marginInline, "0");
   assert.equal(panel.textContent, formatAddingMessage(true));
 
   const spinner = panel.querySelector(
