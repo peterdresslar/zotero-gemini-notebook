@@ -44,11 +44,11 @@ test("publishes one non-plain-text raw request representation and tight bounds",
 
 test("parses the exact sorted compact item-key request", () => {
   const body =
-    '{"destination":"new","itemKeys":["AAAA1111","BBBB2222"],"libraryID":1,"replace":false,"requestId":"request-1"}';
+    '{"destination":"active-or-new","itemKeys":["AAAA1111","BBBB2222"],"libraryID":1,"replace":false,"requestId":"request-1"}';
 
   assert.deepEqual(parseCanonicalCreateJobBody(encoder.encode(body)), {
     libraryID: 1,
-    destination: "new",
+    destination: "active-or-new",
     replace: false,
     requestId: "request-1",
     itemKeys: ["AAAA1111", "BBBB2222"],
@@ -57,11 +57,11 @@ test("parses the exact sorted compact item-key request", () => {
 
 test("parses the exact sorted compact collection request with explicit defaults", () => {
   const body =
-    '{"collectionKey":"ABCD1234","destination":"new","libraryID":2,"recursive":false,"replace":false,"requestId":"a3c14c56-1f00-4d2e-8e68-b36fc7068be3"}';
+    '{"collectionKey":"ABCD1234","destination":"active-or-new","libraryID":2,"recursive":false,"replace":false,"requestId":"a3c14c56-1f00-4d2e-8e68-b36fc7068be3"}';
 
   assert.deepEqual(parseCanonicalCreateJobBody(encoder.encode(body)), {
     libraryID: 2,
-    destination: "new",
+    destination: "active-or-new",
     replace: false,
     requestId: "a3c14c56-1f00-4d2e-8e68-b36fc7068be3",
     collectionKey: "ABCD1234",
@@ -71,13 +71,13 @@ test("parses the exact sorted compact collection request with explicit defaults"
 
 test("rejects semantically valid but noncanonical JSON bytes", () => {
   const cases = [
-    '{ "destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
-    '{"libraryID":1,"destination":"new","itemKeys":["AAAA1111"],"replace":false,"requestId":"request-1"}',
-    '{"destination":"new","itemKeys":["aaaa1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
-    '{"destination":"new","itemKeys":["BBBB2222","AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
-    '{"collectionKey":"ABCD1234","destination":"new","libraryID":2,"replace":false,"requestId":"request-1"}',
-    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"requestId":"request-1"}',
-    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1","requestId":"request-1"}',
+    '{ "destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
+    '{"libraryID":1,"destination":"active-or-new","itemKeys":["AAAA1111"],"replace":false,"requestId":"request-1"}',
+    '{"destination":"active-or-new","itemKeys":["aaaa1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
+    '{"destination":"active-or-new","itemKeys":["BBBB2222","AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
+    '{"collectionKey":"ABCD1234","destination":"active-or-new","libraryID":2,"replace":false,"requestId":"request-1"}',
+    '{"destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"requestId":"request-1"}',
+    '{"destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1","requestId":"request-1"}',
   ];
 
   for (const body of cases) {
@@ -88,11 +88,12 @@ test("rejects semantically valid but noncanonical JSON bytes", () => {
   }
 });
 
-test("requires a bounded ASCII request ID and forbids replacement", () => {
+test("requires active-or-new, a bounded ASCII request ID, and no replacement", () => {
   for (const body of [
-    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false}',
-    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"café"}',
-    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":true,"requestId":"request-1"}',
+    '{"destination":"new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"request-1"}',
+    '{"destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false}',
+    '{"destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"replace":false,"requestId":"café"}',
+    '{"destination":"active-or-new","itemKeys":["AAAA1111"],"libraryID":1,"replace":true,"requestId":"request-1"}',
   ]) {
     assert.throws(
       () => parseCanonicalCreateJobBody(encoder.encode(body)),
@@ -112,7 +113,7 @@ test("rejects invalid UTF-8 and bounds explicit item-key selections", () => {
     (_, index) => index.toString(36).toUpperCase().padStart(8, "0"),
   );
   const body = canonicalJsonStringify({
-    destination: "new",
+    destination: "active-or-new",
     itemKeys: tooManyKeys,
     libraryID: 1,
     replace: false,
@@ -172,7 +173,7 @@ test("creates only the allowlisted, canonical signed-success body", () => {
       libraryID: 1,
       itemKeys: ["PRIVATE1"],
     },
-    destination: "new",
+    destination: "active-or-new",
     itemCount: 2,
     skippedCount: 1,
     createdAt: 1_787_558_400_000,
@@ -190,7 +191,7 @@ test("creates only the allowlisted, canonical signed-success body", () => {
 
 test("publishes a cross-language create-job request and response proof vector", async () => {
   const requestBody =
-    '{"collectionKey":"ABCD1234","destination":"new","libraryID":2,"recursive":false,"replace":false,"requestId":"a3c14c56-1f00-4d2e-8e68-b36fc7068be3"}';
+    '{"collectionKey":"ABCD1234","destination":"active-or-new","libraryID":2,"recursive":false,"replace":false,"requestId":"a3c14c56-1f00-4d2e-8e68-b36fc7068be3"}';
   const bodySha256 = await sha256Hex(requestBody, webcrypto);
   const canonical = createMcpAuthCanonicalString({
     timestamp: VECTOR_TIMESTAMP,
@@ -217,12 +218,12 @@ test("publishes a cross-language create-job request and response proof vector", 
     ),
   );
 
-  assert.equal(encoder.encode(requestBody).byteLength, 147);
+  assert.equal(encoder.encode(requestBody).byteLength, 157);
   assert.equal(
     bodySha256,
-    "ec4c6d4fb65a9ad5b1295d4e7a0438cc4775399148fa671b55eecae888a68aa3",
+    "7ffd4c55ae95909da28f9d58f80e83f4121631af4d528548b14cf4c1b5122953",
   );
-  assert.equal(requestSignature, "dHPG5WHeIWUYMOr8AS8nCIv6QJnKAD1LYNdwSgoBXMc");
+  assert.equal(requestSignature, "XSfMQ6wcGPNhAl6Wos-leApCh-ViXOfwMSjqeKu4VmA");
 
   const responseBody =
     '{"apiVersion":1,"job":{"createdAt":1787558400000,"expiresAt":null,"itemCount":2,"jobId":"f84bf93c-1435-41a2-ae08-b25e0eed195f","skippedCount":1,"state":"staged","updatedAt":1787558400000}}';

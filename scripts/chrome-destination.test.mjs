@@ -91,19 +91,51 @@ test("refuses a new-job destination on an existing notebook before creation", as
 });
 
 test("retains an active notebook only for active-or-new jobs", async () => {
+  for (const [url, notebookPathname] of [
+    [
+      "https://notebook.google.com/notebook/existing-notebook?hl=en#sources",
+      "/notebook/existing-notebook",
+    ],
+    [
+      "https://notebooklm.google.com/notebook/legacy-detail/",
+      "/notebook/legacy-detail",
+    ],
+  ]) {
+    const binding = await prepareBrowserDestination({
+      destination: "active-or-new",
+      getCurrentUrl: () => url,
+      createNotebook: async () => assert.fail("must not create a notebook"),
+    });
+
+    assert.deepEqual(binding, {
+      createdNewNotebook: false,
+      destination: "active-or-new",
+      notebookPathname,
+    });
+    assert.equal(Object.isFrozen(binding), true);
+  }
+});
+
+test("active-or-new creates and binds a new detail from home", async () => {
+  let currentUrl = "https://notebook.google.com/";
+  let createCalls = 0;
   const binding = await prepareBrowserDestination({
     destination: "active-or-new",
-    getCurrentUrl: () =>
-      "https://notebook.google.com/notebook/existing-notebook?hl=en",
-    createNotebook: async () => assert.fail("must not create a notebook"),
+    getCurrentUrl: () => currentUrl,
+    createNotebook: async () => {
+      createCalls += 1;
+      currentUrl =
+        "https://notebook.google.com/notebook/active-or-new-created#sources";
+      return true;
+    },
   });
 
+  assert.equal(createCalls, 1);
   assert.deepEqual(binding, {
-    createdNewNotebook: false,
+    createdNewNotebook: true,
     destination: "active-or-new",
-    notebookPathname: "/notebook/existing-notebook",
+    notebookPathname: "/notebook/active-or-new-created",
   });
-  assert.equal(Object.isFrozen(binding), true);
 });
 
 test("creates and binds a notebook from home before returning", async () => {
@@ -184,6 +216,42 @@ test("popup preparation skips legacy jobs and validates the bound response", asy
   });
   assert.equal(messages, 1);
 
+  const activeBinding = await requestPreparedDestination({
+    jobId: "active-job-id",
+    destination: "active-or-new",
+    sendMessage: async (message) => {
+      assert.deepEqual(message, {
+        action: PREPARE_DESTINATION_ACTION,
+        destination: "active-or-new",
+      });
+      return {
+        success: true,
+        createdNewNotebook: false,
+        destination: "active-or-new",
+        notebookPathname: "/notebook/current-detail",
+      };
+    },
+  });
+  assert.deepEqual(activeBinding, {
+    createdNewNotebook: false,
+    destination: "active-or-new",
+    notebookPathname: "/notebook/current-detail",
+  });
+
+  await assert.rejects(
+    requestPreparedDestination({
+      jobId: "active-job-id",
+      destination: "active-or-new",
+      sendMessage: async () => ({
+        success: true,
+        createdNewNotebook: true,
+        destination: "new",
+        notebookPathname: "/notebook/rewritten-detail",
+      }),
+    }),
+    /invalid import destination/,
+  );
+
   await assert.rejects(
     requestPreparedDestination({
       jobId: "job-id",
@@ -239,6 +307,26 @@ test("destination binding rejects navigation to a different notebook", () => {
     isDestinationBoundToUrl(binding, "https://notebook.google.com/"),
     false,
   );
+
+  const activeBinding = {
+    createdNewNotebook: false,
+    destination: "active-or-new",
+    notebookPathname: "/notebook/current-detail",
+  };
+  assert.equal(
+    isDestinationBoundToUrl(
+      activeBinding,
+      "https://notebook.google.com/notebook/current-detail?hl=en#sources",
+    ),
+    true,
+  );
+  assert.equal(
+    isDestinationBoundToUrl(
+      activeBinding,
+      "https://notebook.google.com/notebook/another-detail",
+    ),
+    false,
+  );
 });
 
 test("requires new jobs to bind a newly created notebook and sanitizes errors", () => {
@@ -284,6 +372,11 @@ test("loads and completes destination preflight before batch bytes", () => {
   assert.ok(fileFetchIndex > beginIndex);
   assert.match(contentSource, /createdNotebook = job\.createdNewNotebook/u);
   assert.match(contentSource, /readPreparationError\(error\?\.message\)/u);
+  assert.match(popupSource, /destination: stagedDestination/u);
+  assert.match(
+    popupSource,
+    /beginMessage\.destination = preparedDestination\.destination/u,
+  );
 
   const contentScripts = manifest.content_scripts.find((entry) =>
     entry.js?.includes("content.js"),

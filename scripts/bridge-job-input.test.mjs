@@ -9,13 +9,13 @@ test("normalizes stable item keys for semantic idempotency", () => {
     normalizeCreateBridgeJobInput({
       libraryID: 1,
       itemKeys: ["bbbb2222", "AAAA1111"],
-      destination: "new",
+      destination: "active-or-new",
       requestId: " request-1 ",
     }),
     {
       libraryID: 1,
       itemKeys: ["AAAA1111", "BBBB2222"],
-      destination: "new",
+      destination: "active-or-new",
       requestId: "request-1",
       replace: false,
     },
@@ -27,21 +27,21 @@ test("normalizes a collection request and its recursive default", () => {
     normalizeCreateBridgeJobInput({
       libraryID: 2,
       collectionKey: "abcd1234",
-      destination: "new",
+      destination: "active-or-new",
       replace: true,
     }),
     {
       libraryID: 2,
       collectionKey: "ABCD1234",
       recursive: false,
-      destination: "new",
+      destination: "active-or-new",
       replace: true,
     },
   );
 });
 
 test("requires exactly one stable Zotero source selector", () => {
-  const base = { libraryID: 1, destination: "new" };
+  const base = { libraryID: 1, destination: "active-or-new" };
   assert.throws(() => normalizeCreateBridgeJobInput(base), /exactly one/);
   assert.throws(
     () =>
@@ -64,7 +64,7 @@ test("requires exactly one stable Zotero source selector", () => {
 });
 
 test("rejects malformed and case-insensitive duplicate Zotero keys", () => {
-  const base = { libraryID: 1, destination: "new" };
+  const base = { libraryID: 1, destination: "active-or-new" };
   assert.throws(
     () => normalizeCreateBridgeJobInput({ ...base, itemKeys: ["SHORT"] }),
     /eight alphanumeric/,
@@ -83,7 +83,7 @@ test("rejects numeric IDs, attachment IDs, paths, and unknown fields", () => {
   const base = {
     libraryID: 1,
     itemKeys: ["AAAA1111"],
-    destination: "new",
+    destination: "active-or-new",
   };
   for (const forbidden of [
     { itemIds: [1] },
@@ -98,20 +98,22 @@ test("rejects numeric IDs, attachment IDs, paths, and unknown fields", () => {
 });
 
 test("rejects invalid libraries, destinations, request IDs, and flags", () => {
-  const base = { itemKeys: ["AAAA1111"], destination: "new" };
+  const base = { itemKeys: ["AAAA1111"], destination: "active-or-new" };
   assert.throws(
     () => normalizeCreateBridgeJobInput({ ...base, libraryID: 0 }),
     /positive integer/,
   );
-  assert.throws(
-    () =>
-      normalizeCreateBridgeJobInput({
-        ...base,
-        libraryID: 1,
-        destination: "current",
-      }),
-    /destination must be "new"/,
-  );
+  for (const destination of ["new", "current"]) {
+    assert.throws(
+      () =>
+        normalizeCreateBridgeJobInput({
+          ...base,
+          libraryID: 1,
+          destination,
+        }),
+      /destination must be "active-or-new"/,
+    );
+  }
   assert.throws(
     () =>
       normalizeCreateBridgeJobInput({
@@ -145,13 +147,13 @@ test("accepts plain requests from another JavaScript realm", () => {
   const input = runInNewContext(`({
     libraryID: 1,
     itemKeys: ["aaaa1111"],
-    destination: "new"
+    destination: "active-or-new"
   })`);
 
   assert.deepEqual(normalizeCreateBridgeJobInput(input), {
     libraryID: 1,
     itemKeys: ["AAAA1111"],
-    destination: "new",
+    destination: "active-or-new",
     replace: false,
   });
 

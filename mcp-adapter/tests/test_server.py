@@ -205,6 +205,9 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(tool.annotations.destructiveHint, False)
         self.assertIs(tool.annotations.idempotentHint, True)
         self.assertIs(tool.annotations.openWorldHint, False)
+        self.assertIn("later starts the Chrome import", tool.description)
+        self.assertIn("active Gemini Notebook", tool.description)
+        self.assertIn("new notebook", tool.description)
         self.assertNotIn(
             "job_not_found",
             tool.outputSchema["properties"]["status"]["enum"],

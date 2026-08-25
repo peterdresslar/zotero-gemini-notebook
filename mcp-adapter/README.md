@@ -125,14 +125,14 @@ An explicit item request uses `"item_keys":["ABCD1234","EFGH5678"]`
 instead of `collection_key`. Reuse a request ID only for the exact same
 normalized request; a retry then returns the existing job. A different request
 with the same ID is rejected. A successful result means only that Zotero staged
-the job. Agent-staged jobs require a new destination: open Gemini Notebook's
-home page before clicking **Import**. If an existing notebook is open, the
-companion refuses the import before fetching attachment bytes. Confirm the
-count in the Chrome companion, click **Import**, complete any highlighted
-one-click page action, and verify the sources in the new notebook. The companion
-reports `submitted` only after it hands the files to Gemini's uploader; that
-state does not mean the uploader accepted every source, processing finished, or
-visible-source verification passed.
+the job. Agent-staged jobs use the active Gemini Notebook when a notebook is
+already open, or create a new notebook when the import starts from Gemini
+Notebook's home page. Open the intended notebook (or the home page to create
+one), confirm the count in the Chrome companion, click **Import**, complete any
+highlighted one-click page action, and verify the sources in that notebook. The
+companion reports `submitted` only after it hands the files to Gemini's
+uploader; that state does not mean the uploader accepted every source,
+processing finished, or visible-source verification passed.
 After reloading an updated unpacked companion, refresh any already-open Gemini
 Notebook tab before importing so its content script uses the same lifecycle
 protocol version.
@@ -166,8 +166,10 @@ The important lifecycle distinctions are:
 - `submitted` means Chrome handed the files to Gemini's uploader. It does not
   mean Gemini finished processing them or that the visible source list was
   verified.
-- `verified` is reserved for a later positive comparison with Gemini's visible
-  sources. `verifying` and `verified` are future-facing states that the current
+- `verified` is reserved for a later positive comparison in a
+  connector-created, initially empty notebook. An import into an active
+  existing notebook still requires manual source confirmation;
+  `verifying` and `verified` are future-facing states that the current
   companion does not report.
 - `unverified` means submission could not be conclusively observed; `failed`
   means the current handoff stopped with an error.

@@ -67,6 +67,15 @@ test("connects agent job creation to sized resolution, limits, and TTL", () => {
   assert.match(itemsSource, /byteSize: info\.size/u);
 });
 
+test("carries the normalized agent destination into idempotency and storage", () => {
+  assert.equal(
+    bridgeJobsSource.match(/destination: request\.destination/gu)?.length,
+    2,
+  );
+  assert.doesNotMatch(bridgeJobsSource, /destination: "new"/u);
+  assert.match(bridgeJobsSource, /replaceExisting: request\.replace/u);
+});
+
 test("retains private read bounds for the Zotero job authority", async () => {
   const resolved = await prepareAgentStagedItems([1, 2, 3], async (id) =>
     id === 2 ? null : { stagedItem: stagedItem(id), byteSize: id * 10 },

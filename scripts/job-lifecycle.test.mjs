@@ -36,6 +36,7 @@ const {
   isCompatiblePingResponse,
   isAllowedPopupSender,
 } = globalThis.ZoteroUploadHandoff;
+const { isDestinationBoundToUrl } = globalThis.ZoteroUploadDestination;
 
 test("creates the exact canonical claim and lifecycle bodies", () => {
   const attachmentIds = [30, 10, 20];
@@ -419,6 +420,42 @@ test("claim acknowledgement precedes exactly one upload", async () => {
     `claim:${CLAIM_ID}`,
     "upload",
   ]);
+});
+
+test("active-or-new binds the current pathname before claim", async () => {
+  let currentUrl =
+    "https://notebook.google.com/notebook/current-detail?hl=en#sources";
+  const harness = createHandoffHarness({
+    verifyDestination: (job) => isDestinationBoundToUrl(job, currentUrl),
+  });
+  const message = beginMessage({
+    createdNewNotebook: false,
+    destination: "active-or-new",
+    notebookPathname: "/notebook/current-detail",
+  });
+
+  harness.controller.begin(message, POPUP_SENDER);
+  harness.controller.addChunk(chunkMessage(), POPUP_SENDER);
+  await harness.controller.commit(CLAIM_ID, POPUP_SENDER);
+
+  assert.equal(harness.claims.length, 1);
+  assert.equal(harness.claims[0].destination, "active-or-new");
+  assert.equal(harness.claims[0].createdNewNotebook, false);
+  assert.equal(harness.claims[0].notebookPathname, "/notebook/current-detail");
+  assert.equal(harness.uploads.length, 1);
+
+  const changed = createHandoffHarness({
+    verifyDestination: (job) => isDestinationBoundToUrl(job, currentUrl),
+  });
+  changed.controller.begin(message, POPUP_SENDER);
+  changed.controller.addChunk(chunkMessage(), POPUP_SENDER);
+  currentUrl = "https://notebook.google.com/notebook/different-detail";
+  await assert.rejects(
+    changed.controller.commit(CLAIM_ID, POPUP_SENDER),
+    /changed destinations before Zotero could claim/u,
+  );
+  assert.equal(changed.claims.length, 0);
+  assert.equal(changed.uploads.length, 0);
 });
 
 test("destination mismatch discards bytes before claim", async () => {

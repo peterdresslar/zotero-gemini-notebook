@@ -89,9 +89,9 @@ test("create-job uses a bounded raw vendor body and authenticates before parsing
   );
 });
 
-test("create-job forces non-replacement input and returns an allowlisted job DTO", () => {
+test("create-job forces active-or-new, non-replacement input and returns an allowlisted job DTO", () => {
   assert.match(jobProtocolSource, /document\.replace !== false/u);
-  assert.match(jobProtocolSource, /document\.destination !== "new"/u);
+  assert.match(jobProtocolSource, /document\.destination !== "active-or-new"/u);
   assert.match(
     jobProtocolSource,
     /hasOwnProperty\.call\(document, "requestId"\)/u,

@@ -171,9 +171,15 @@ test("job-bound terminal copy requires restaging and describes only handoff", ()
   );
   assert.match(
     contentSource,
-    /Restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home\./u,
+    /Check this notebook's Sources panel\. If anything is missing, restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home\./u,
   );
   assert.match(popupSource, /handed to Gemini Notebook's uploader/u);
+  assert.match(
+    popupSource,
+    /Check this notebook's Sources panel before restaging/u,
+  );
+  assert.match(popupSource, /Check this notebook first/u);
+  assert.doesNotMatch(popupSource, /return to Gemini Notebook home/u);
 });
 
 test("inner upload path immediately requests one real click without synthetic activation", async () => {
@@ -413,7 +419,7 @@ test("a new-notebook input timeout becomes unverified and requires restaging", a
   assert.equal(messages.length, 1);
   assert.match(messages[0], /Check its Sources panel/u);
   assert.match(messages[0], /restage the sources in Zotero/u);
-  assert.match(messages[0], /return to Gemini Notebook home/u);
+  assert.match(messages[0], /from this notebook or Gemini Notebook home/u);
   assert.match(messages[0], /start a new import/u);
 });
 

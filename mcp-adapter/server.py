@@ -67,10 +67,12 @@ def get_zotero_bridge_status() -> ZoteroBridgeStatus:
     title="Stage Zotero import job",
     description=(
         "Resolve stable Zotero item or collection keys and stage their "
-        "supported local attachments for a new Gemini Notebook import. This "
-        "does not create the notebook or claim that any source was uploaded. "
-        "Provide exactly one of item_keys or collection_key, and reuse the "
-        "same request_id only for the same request."
+        "supported local attachments for a later Chrome import. When the user "
+        "later starts the Chrome import, it targets the active Gemini Notebook "
+        "or creates a new notebook if started from the Gemini Notebook home "
+        "page. Staging does not create the notebook or claim that any source "
+        "was uploaded. Provide exactly one of item_keys or collection_key, "
+        "and reuse the same request_id only for the same request."
     ),
     annotations={
         "readOnlyHint": False,

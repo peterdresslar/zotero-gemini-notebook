@@ -195,18 +195,18 @@ async function uploadBatch(files, job) {
         "[Zotero content] Upload timed out before Gemini Notebook confirmed file injection",
       );
       message =
-        "The new notebook was created, but Zotero could not confirm whether the one-time staged import added the files. Check its Sources panel. If anything is missing, restage the sources in Zotero, return to Gemini Notebook home, and start a new import.";
+        "The new notebook was created, but Zotero could not confirm whether the one-time staged import added the files. Check its Sources panel. If anything is missing, restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home.";
     } else if (job && createdNotebook) {
       await reportJobLifecycle(job, "failed");
       message =
-        "The new notebook was created, but Zotero stopped the one-time staged import before it could safely add the files. Restage the sources in Zotero, return to Gemini Notebook home, and start a new import.";
+        "The new notebook was created, but Zotero stopped the one-time staged import before it could safely add the files. Restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home.";
     } else if (job && error.code === UPLOAD_TIMEOUT_ERROR_CODE) {
       await reportJobLifecycle(job, "unverified");
       console.warn(
         "[Zotero content] Upload timed out before Gemini Notebook confirmed file injection",
       );
       message =
-        "Zotero could not confirm whether the one-time staged import handed the files to Gemini Notebook's uploader. Restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home.";
+        "Zotero could not confirm whether the one-time staged import handed the files to Gemini Notebook's uploader. Check this notebook's Sources panel. If anything is missing, restage the sources in Zotero, then start a new import from this notebook or Gemini Notebook home.";
     } else if (job) {
       await reportJobLifecycle(job, "failed");
       message =

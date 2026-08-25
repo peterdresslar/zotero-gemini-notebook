@@ -23,8 +23,8 @@ export function normalizeCreateBridgeJobInput(input) {
   if (!Number.isSafeInteger(input.libraryID) || input.libraryID <= 0) {
     throw new TypeError("libraryID must be a positive integer.");
   }
-  if (input.destination !== "new") {
-    throw new TypeError('destination must be "new".');
+  if (input.destination !== "active-or-new") {
+    throw new TypeError('destination must be "active-or-new".');
   }
 
   let requestId;
@@ -54,7 +54,7 @@ export function normalizeCreateBridgeJobInput(input) {
 
   const base = {
     libraryID: input.libraryID,
-    destination: "new",
+    destination: "active-or-new",
     replace: input.replace ?? false,
     ...(requestId === undefined ? {} : { requestId }),
   };

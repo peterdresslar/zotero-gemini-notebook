@@ -58,7 +58,7 @@ export async function createJob(
     const existing = bridgeJobStore.getIdempotentJob(requestId, {
       origin: "agent",
       source,
-      destination: "new",
+      destination: request.destination,
     });
     if (existing) return existing;
   }
@@ -89,7 +89,7 @@ export async function createJob(
     items: stagedItems,
     origin: "agent",
     source,
-    destination: "new",
+    destination: request.destination,
     skippedCount,
     requestId,
     replaceExisting: request.replace,

@@ -27,10 +27,18 @@ The initial user-facing MCP workflow will be able to:
 1. identify a Zotero library and either a collection key or explicit item keys;
 2. ask Zotero to resolve the supported local attachments and create a job with
    a frozen attachment-record allowlist;
-3. let the installed Chrome companion create a Gemini Notebook and transfer only
-   the files authorized for that job; and
+3. let the installed Chrome companion use the active Gemini Notebook or create
+   one from the home page, then transfer only the files authorized for that
+   job; and
 4. query the job until the expected sources are visibly present in Gemini
    Notebook or the job reaches an honest non-success state.
+
+The `active-or-new` upload destination does not make an arbitrary pre-existing
+notebook automatically verifiable. The current verification foundation is
+conservative: only a connector-created, initially empty notebook can later
+qualify for `verified`. An import into an active existing notebook remains a
+truthful handoff state plus manual source confirmation until a separate
+baseline-and-delta design is reviewed.
 
 The first planned MCP tools are:
 
@@ -235,15 +243,15 @@ The frozen `addon.api` surface provides:
 - synchronous `getJob(jobId)` and `getActiveJob()`; and
 - idempotent `cancelJob(jobId)`.
 
-Agent-oriented creation requires `destination: "new"`, a stable `libraryID`,
-and exactly one source selector: `itemKeys` or `collectionKey`. Collection
-requests may set `recursive` (normalized to `false` when omitted). `requestId`
-supplies the idempotency key, and an explicit `replace` option requests the
-permitted replacement behavior. Numeric item or attachment IDs are rejected.
-The returned snapshot contains job metadata and counts, not resolved items or
-paths.
+Agent-oriented creation requires `destination: "active-or-new"`, a stable
+`libraryID`, and exactly one source selector: `itemKeys` or `collectionKey`.
+Collection requests may set `recursive` (normalized to `false` when omitted).
+`requestId` supplies the idempotency key, and an explicit `replace` option
+requests the permitted replacement behavior. Numeric item or attachment IDs
+are rejected. The returned snapshot contains job metadata and counts, not
+resolved items or paths.
 
-Human staging uses the internal controller with a `human` origin and an
+Human staging uses the internal controller with a `human` origin and the same
 `active-or-new` destination. It shares job invariants with the agent API without
 making the human UI call an MCP-shaped interface.
 
@@ -296,7 +304,8 @@ target.
 
 Enabling the preference prepares the private local authorization boundary for
 control calls. The diagnostic remains read-only, and the staging action accepts
-only stable Zotero keys and returns no source metadata. See the
+only stable Zotero keys, fixes the destination to `active-or-new` and
+replacement to `false`, and returns no source metadata. See the
 [MCP adapter beta guide](../mcp-adapter/README.md) for the current local setup
 and test commands.
 
@@ -390,8 +399,10 @@ be reviewed before the next one depends on it.
    claimant-bound browser handoff and record `submitted`, `unverified`, or
    `failed` without equating injection with verification. Upload retry and
    cancellation semantics remain follow-up work.
-6. **Verification:** bind agent jobs to a connector-created new notebook, then
-   add source-list comparison so `verified` reflects visible Gemini state.
+6. **Verification:** add source-list comparison for a connector-created,
+   initially empty notebook so `verified` reflects visible Gemini state. Keep
+   imports into active existing notebooks at truthful handoff states plus
+   manual confirmation until a separate baseline-and-delta design is reviewed.
 7. **Workflow tools:** replace the current staging-and-status preview with the
    truthful create-and-verify workflow, and add cancellation only if it remains
    safely idempotent.
@@ -427,10 +438,12 @@ be reviewed before the next one depends on it.
   item keys with `stage_zotero_import_job`.
 - The same host can query that opaque job with `get_zotero_import_job` and
   observe its claimant-bound state without receiving Zotero source metadata.
-- Chrome can claim exactly that job, create a notebook, transfer only its
-  sources, and retain useful status across expected page latency.
-- `submitted` is visible before verification, and a missing or renamed Gemini
-  source never produces `verified`.
+- Chrome can claim exactly that job, retain an intended active notebook or
+  create one from the home page, transfer only its sources, and retain useful
+  status across expected page latency.
+- `submitted` is visible before verification; only a connector-created,
+  initially empty notebook may advance to `verified`, and a missing or renamed
+  Gemini source never produces `verified`.
 - Timeout, DOM incompatibility, cancellation, expiry, replacement, retry, Zotero
   restart, Chrome reload, and version mismatch paths produce actionable and
   truthful status.

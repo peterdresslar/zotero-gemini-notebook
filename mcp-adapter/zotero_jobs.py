@@ -537,7 +537,7 @@ def create_stage_job_body(
         )
 
     document: dict[str, object] = {
-        "destination": "new",
+        "destination": "active-or-new",
         "libraryID": library_id,
         "replace": False,
         "requestId": request_id,

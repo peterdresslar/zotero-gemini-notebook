@@ -360,9 +360,9 @@ async function doImport() {
       btn.textContent = "Check Gemini Notebook";
     } else if (jobId && preparedDestination?.createdNewNotebook === true) {
       progressText.textContent =
-        "The new notebook was created, but the one-time staged import did not start safely. Check the notebook, then return to Gemini Notebook home before starting another import.";
+        "The new notebook was created, but Zotero could not confirm whether the one-time staged import started. Check this notebook's Sources panel before restaging. If the files are missing, start the next import from this notebook or Gemini Notebook home.";
       btn.disabled = true;
-      btn.textContent = "Open Gemini Notebook home first";
+      btn.textContent = "Check this notebook first";
     } else {
       progressText.textContent = `Error uploading to Gemini Notebook: ${e.message}`;
       btn.disabled = false;

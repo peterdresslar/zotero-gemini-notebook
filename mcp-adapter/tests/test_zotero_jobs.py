@@ -217,7 +217,7 @@ class JobInputTests(unittest.TestCase):
         )
         self.assertEqual(
             body,
-            b'{"destination":"new","itemKeys":["AAAA1111","BBBB2222"],'
+            b'{"destination":"active-or-new","itemKeys":["AAAA1111","BBBB2222"],'
             b'"libraryID":2,"replace":false,"requestId":"request-1"}',
         )
 
@@ -230,7 +230,7 @@ class JobInputTests(unittest.TestCase):
         )
         self.assertEqual(
             body,
-            b'{"collectionKey":"ABCD1234","destination":"new",'
+            b'{"collectionKey":"ABCD1234","destination":"active-or-new",'
             b'"libraryID":3,"recursive":true,"replace":false,'
             b'"requestId":"collection-request"}',
         )
@@ -349,14 +349,14 @@ class SignedJobRequestTests(unittest.TestCase):
         )
         headers = {name.lower(): value for name, value in request.header_items()}
 
-        self.assertEqual(len(body), 147)
+        self.assertEqual(len(body), 157)
         self.assertEqual(
             hashlib.sha256(body).hexdigest(),
-            "ec4c6d4fb65a9ad5b1295d4e7a0438cc4775399148fa671b55eecae888a68aa3",
+            "7ffd4c55ae95909da28f9d58f80e83f4121631af4d528548b14cf4c1b5122953",
         )
         self.assertEqual(
             headers["x-zgn-signature"],
-            "dHPG5WHeIWUYMOr8AS8nCIv6QJnKAD1LYNdwSgoBXMc",
+            "XSfMQ6wcGPNhAl6Wos-leApCh-ViXOfwMSjqeKu4VmA",
         )
 
         response_body = (

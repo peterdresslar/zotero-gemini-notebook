@@ -44,7 +44,7 @@ export type ChromeUploadDestination = "new" | "active-or-new";
 
 interface CreateBridgeJobBase {
   libraryID: number;
-  destination: "new";
+  destination: "active-or-new";
   requestId?: string;
   replace?: boolean;
 }

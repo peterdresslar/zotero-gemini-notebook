@@ -92,9 +92,9 @@ export function parseCanonicalCreateJobBody(value) {
   ) {
     throw invalidRequest("requestId must be a bounded ASCII identifier");
   }
-  if (document.destination !== "new" || document.replace !== false) {
+  if (document.destination !== "active-or-new" || document.replace !== false) {
     throw invalidRequest(
-      'The first create-job endpoint requires destination "new" and replace false',
+      'The create-job endpoint requires destination "active-or-new" and replace false',
     );
   }
   if (
