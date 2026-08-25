@@ -324,7 +324,9 @@
     }
 
     function setAssisted({ action, fileCount } = {}) {
-      show(formatAssistedMessage(fileCount, action), { spinner: false });
+      show(formatAssistedMessage(fileCount, action), {
+        spinner: action === "upload-files",
+      });
     }
 
     function showError(nextMessage) {

@@ -341,9 +341,9 @@ test("places one accessible status immediately before the dialog drop zone", () 
 
   controller.setAssisted({ action: "upload-files", fileCount: 2 });
   assert.equal(panel.textContent, formatAssistedMessage(2, "upload-files"));
-  assert.equal(spinner.hidden, true);
-  assert.equal(spinner.style.display, "none");
-  assert.equal(spinner.animationCount, 1);
+  assert.equal(spinner.hidden, false);
+  assert.equal(spinner.style.display, "inline-block");
+  assert.equal(spinner.animationCount, 2);
   assert.equal(spinner.animationCancelCount, 1);
 
   controller.setAdding({ createdNotebook: true });
