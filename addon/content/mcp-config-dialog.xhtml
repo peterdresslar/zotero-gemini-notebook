@@ -20,7 +20,7 @@ type="text/css"?>
       <html:p>
         MCP support enters beta in v0.4.0. It uses a standard local stdio
         adapter and remains off by default. The current beta exposes a read-only
-        status tool and an authenticated staging tool.
+        status tool, authenticated staging, and read-only job status.
       </html:p>
     </html:header>
 
@@ -29,9 +29,9 @@ type="text/css"?>
       <html:span>
         <html:strong>Enable MCP support (Beta)</html:strong>
         <html:small>
-          Allows the local adapter to stage Zotero sources after you configure
-          an MCP client. It does not install or start the adapter or modify MCP
-          client files.
+          Controls Zotero's authenticated local MCP access. Auto-configure is a
+          separate explicit action and enables this access after client setup
+          succeeds.
         </html:small>
       </html:span>
     </html:label>
@@ -53,9 +53,9 @@ type="text/css"?>
       class="mcp-settings-panel"
       aria-labelledby="mcp-settings-heading"
     >
-      <html:h2 id="mcp-settings-heading" class="pane-header">
-        Client and adapter paths
-      </html:h2>
+      <html:h2 id="mcp-settings-heading" class="pane-header"
+        >Client setup</html:h2
+      >
 
       <html:div class="mcp-form-row">
         <html:label id="mcp-client-label" for="mcp-client-select">
@@ -70,72 +70,191 @@ type="text/css"?>
         </menulist>
       </html:div>
 
-      <html:div class="mcp-form-row">
-        <html:label for="mcp-runtime-path">Runtime executable</html:label>
-        <html:div class="mcp-path-row">
-          <html:input
-            id="mcp-runtime-path"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="uv"
-            aria-describedby="mcp-runtime-path-help"
-          />
-          <html:button id="mcp-runtime-browse" type="button">
-            Browse…
+      <html:section
+        id="mcp-auto-configure-panel"
+        class="mcp-auto-configure-panel"
+        aria-labelledby="mcp-auto-configure-heading"
+      >
+        <html:h3 id="mcp-auto-configure-heading">Automatic setup</html:h3>
+        <html:p id="mcp-auto-configure-guidance">
+          Codex and uv must already be installed. Auto-configure will install
+          the adapter bundled in this XPI and register it with Codex.
+        </html:p>
+        <html:div class="mcp-auto-configure-action">
+          <html:button
+            id="mcp-auto-configure"
+            class="mcp-auto-configure-button"
+            type="button"
+            disabled="disabled"
+            aria-describedby="mcp-auto-configure-guidance mcp-auto-configure-status mcp-auto-configure-rerun-help"
+          >
+            Auto-configure Codex
           </html:button>
+          <html:span
+            id="mcp-auto-configure-status"
+            class="mcp-auto-configure-status"
+            role="status"
+            aria-live="polite"
+          >
+            Ready. Nothing changes until you press Auto-configure.
+          </html:span>
         </html:div>
-        <html:small id="mcp-runtime-path-help" class="mcp-field-help">
-          Path to <html:code>uv</html:code> for the external MCP adapter.
+        <html:small id="mcp-auto-configure-rerun-help" class="mcp-field-help">
+          Re-running Auto-configure asks for confirmation, then adds or replaces
+          only the client registration named
+          <html:code>zotero-gemini-notebook</html:code> with the current
+          Zotero-managed defaults.
         </html:small>
-      </html:div>
+      </html:section>
 
-      <html:div class="mcp-form-row">
-        <html:label for="mcp-adapter-path">Adapter entrypoint</html:label>
-        <html:div class="mcp-path-row">
-          <html:input
-            id="mcp-adapter-path"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="server.py"
-            aria-describedby="mcp-adapter-path-help"
-          />
-          <html:button id="mcp-adapter-browse" type="button">
-            Browse…
-          </html:button>
+      <html:details id="mcp-advanced-settings" class="mcp-advanced-settings">
+        <html:summary>Advanced</html:summary>
+        <html:div class="mcp-advanced-content">
+          <html:p class="mcp-advanced-intro">
+            Inspect or override local paths, then copy a standard STDIO command
+            when automatic setup is unavailable.
+          </html:p>
+
+          <html:div class="mcp-form-row">
+            <html:label for="mcp-client-executable-path">
+              Client executable
+            </html:label>
+            <html:div class="mcp-path-row">
+              <html:input
+                id="mcp-client-executable-path"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="codex"
+                aria-describedby="mcp-client-executable-path-help"
+              />
+              <html:button id="mcp-client-executable-browse" type="button">
+                Browse…
+              </html:button>
+            </html:div>
+            <html:small
+              id="mcp-client-executable-path-help"
+              class="mcp-field-help"
+            >
+              Optional absolute path to the selected client's command-line
+              executable. Claude Desktop and Custom use manual setup.
+            </html:small>
+          </html:div>
+
+          <html:div class="mcp-form-row">
+            <html:label for="mcp-runtime-path">uv executable</html:label>
+            <html:div class="mcp-path-row">
+              <html:input
+                id="mcp-runtime-path"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="uv"
+                aria-describedby="mcp-runtime-path-help"
+              />
+              <html:button id="mcp-runtime-browse" type="button">
+                Browse…
+              </html:button>
+            </html:div>
+            <html:small id="mcp-runtime-path-help" class="mcp-field-help">
+              Absolute path to <html:code>uv</html:code> for the local adapter.
+            </html:small>
+          </html:div>
+
+          <html:div class="mcp-form-row">
+            <html:label for="mcp-adapter-path">Adapter entrypoint</html:label>
+            <html:div class="mcp-path-row">
+              <html:input
+                id="mcp-adapter-path"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="server.py"
+                aria-describedby="mcp-adapter-path-help"
+              />
+              <html:button id="mcp-adapter-browse" type="button">
+                Browse…
+              </html:button>
+            </html:div>
+            <html:small id="mcp-adapter-path-help" class="mcp-field-help">
+              Manual STDIO fallback only: path to a custom adapter's
+              <html:code>server.py</html:code>. Auto-configure always installs
+              and validates the adapter bundled in this XPI.
+            </html:small>
+          </html:div>
+
+          <html:div class="mcp-form-row">
+            <html:label for="mcp-client-config-path">
+              Client configuration hint
+            </html:label>
+            <html:input
+              id="mcp-client-config-path"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby="mcp-client-config-path-help"
+            />
+            <html:small id="mcp-client-config-path-help" class="mcp-field-help">
+              Stored as a location hint only. Auto-configure uses the client's
+              own command-line tool; this dialog does not parse the client
+              configuration file directly.
+            </html:small>
+          </html:div>
+
+          <html:div class="mcp-defaults-row">
+            <html:button id="mcp-apply-defaults" type="button">
+              Use suggested config location
+            </html:button>
+            <html:span>
+              Updates the client configuration hint without replacing executable
+              or adapter path overrides.
+            </html:span>
+          </html:div>
+
+          <html:section
+            id="mcp-client-setup"
+            class="mcp-client-setup"
+            aria-labelledby="mcp-client-setup-heading"
+          >
+            <html:h3 id="mcp-client-setup-heading">
+              Manual STDIO fallback
+            </html:h3>
+            <html:p id="mcp-client-setup-guidance">
+              Choose absolute paths to uv and the adapter to generate a copyable
+              STDIO command.
+            </html:p>
+            <html:div class="mcp-server-name-row">
+              <html:span>Server name</html:span>
+              <html:code id="mcp-server-name">zotero-gemini-notebook</html:code>
+            </html:div>
+            <html:label for="mcp-setup-command">STDIO command</html:label>
+            <html:textarea
+              id="mcp-setup-command"
+              rows="3"
+              readonly="readonly"
+              spellcheck="false"
+              aria-describedby="mcp-client-setup-guidance mcp-setup-copy-status"
+            />
+            <html:div class="mcp-copy-row">
+              <html:button
+                id="mcp-copy-setup-command"
+                type="button"
+                disabled="disabled"
+              >
+                Copy STDIO command
+              </html:button>
+              <html:span
+                id="mcp-setup-copy-status"
+                class="mcp-copy-status"
+                role="status"
+                aria-live="polite"
+              >
+                No client configuration has been changed.
+              </html:span>
+            </html:div>
+          </html:section>
         </html:div>
-        <html:small id="mcp-adapter-path-help" class="mcp-field-help">
-          Path to the adapter's <html:code>server.py</html:code> entrypoint.
-          Zotero does not install or start it.
-        </html:small>
-      </html:div>
-
-      <html:div class="mcp-form-row">
-        <html:label for="mcp-client-config-path">
-          Client configuration location
-        </html:label>
-        <html:input
-          id="mcp-client-config-path"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          aria-describedby="mcp-client-config-path-help"
-        />
-        <html:small id="mcp-client-config-path-help" class="mcp-field-help">
-          Stored as a location hint only. Zotero will not read or modify the
-          client configuration file.
-        </html:small>
-      </html:div>
-
-      <html:div class="mcp-defaults-row">
-        <html:button id="mcp-apply-defaults" type="button">
-          Use Suggested Path
-        </html:button>
-        <html:span>
-          Uses the usual configuration location for the selected client.
-        </html:span>
-      </html:div>
+      </html:details>
 
       <html:div
         id="mcp-local-recovery"
@@ -157,9 +276,16 @@ type="text/css"?>
     </html:section>
 
     <html:aside class="mcp-notice" role="note">
-      <html:strong>Nothing is installed or run from this dialog.</html:strong>
-      The beta adapter can stage Zotero sources for the existing Chrome handoff,
-      but it cannot create notebooks or upload sources on its own.
+      <html:strong
+        >Auto-configure runs only when you press its button.</html:strong
+      >
+      It installs or validates the adapter source bundled with Zotero and
+      invokes the selected client's own command-line tool. It does not install
+      the MCP client, Python, or uv; use a shell; or start the MCP server.
+      During its bounded import preflight, uv may download pinned dependencies
+      into an isolated environment but will not download Python. The beta
+      adapter stages sources for the existing Chrome handoff; it does not create
+      notebooks or upload sources by itself.
     </html:aside>
 
     <hbox id="mcp-config-bottom-bar" align="center">

@@ -3,11 +3,18 @@ import { getPref, setPref } from "../utils/prefs";
 import { isWindowAlive } from "../utils/window";
 import {
   MCP_CLIENT_PRESETS,
+  MCP_SERVER_NAME,
   applyMcpClientPreset,
+  formatMcpStdioCommand,
   normalizePersistedMcpSettings,
   normalizeMcpSettings,
 } from "./mcpConfig.js";
 import type { McpPathEnvironment, McpSettings } from "./mcpConfig.js";
+import {
+  autoConfigureMcpClient,
+  McpAutoConfigureError,
+} from "./mcpAutoConfigure";
+import type { McpAutoConfigClientId } from "./mcpClientAutoConfig.js";
 import {
   ensureMcpLocalAuthorization,
   getMcpLocalAuthorizationStatus,
@@ -15,6 +22,7 @@ import {
 } from "./mcpLocalAuth";
 
 type LocalAuthorizationStatus = "checking" | "ready" | "missing" | "invalid";
+type AutoConfigureStatusKind = "idle" | "running" | "success" | "error";
 
 let dialogWindow: Window | null = null;
 
@@ -52,12 +60,21 @@ export function openMcpConfigDialog(parentWin: Window): void {
 interface DialogElements {
   enabled: HTMLInputElement;
   clientPreset: XULMenuListElement;
+  clientExecutablePath: HTMLInputElement;
   runtimePath: HTMLInputElement;
   adapterPath: HTMLInputElement;
   clientConfigPath: HTMLInputElement;
   browseRuntime: HTMLButtonElement;
+  browseClientExecutable: HTMLButtonElement;
   browseAdapter: HTMLButtonElement;
   applyDefaults: HTMLButtonElement;
+  autoConfigure: HTMLButtonElement;
+  autoConfigureGuidance: HTMLElement;
+  autoConfigureStatus: HTMLElement;
+  setupGuidance: HTMLElement;
+  setupCommand: HTMLTextAreaElement;
+  copySetupCommand: HTMLButtonElement;
+  copySetupStatus: HTMLElement;
   localRecovery: HTMLElement;
   resetLocalConnection: HTMLButtonElement;
   settingsPanel: HTMLElement;
@@ -76,6 +93,9 @@ interface DialogState {
   environment: McpPathEnvironment;
   localAuthorizationStatus: LocalAuthorizationStatus;
   showRepairAfterSaveFailure: boolean;
+  autoConfigureInProgress: boolean;
+  autoConfigureStatusKind: AutoConfigureStatusKind;
+  autoConfigureMessage: string | null;
   saveInProgress: boolean;
   resetInProgress: boolean;
 }
@@ -95,6 +115,9 @@ async function initDialog(win: Window): Promise<void> {
       environment: getPathEnvironment(),
       localAuthorizationStatus: "checking",
       showRepairAfterSaveFailure: false,
+      autoConfigureInProgress: false,
+      autoConfigureStatusKind: "idle",
+      autoConfigureMessage: null,
       saveInProgress: false,
       resetInProgress: false,
     };
@@ -112,6 +135,10 @@ function getDialogElements(doc: Document): DialogElements {
   return {
     enabled: requireElement<HTMLInputElement>(doc, "mcp-enable-checkbox"),
     clientPreset: requireElement<XULMenuListElement>(doc, "mcp-client-select"),
+    clientExecutablePath: requireElement<HTMLInputElement>(
+      doc,
+      "mcp-client-executable-path",
+    ),
     runtimePath: requireElement<HTMLInputElement>(doc, "mcp-runtime-path"),
     adapterPath: requireElement<HTMLInputElement>(doc, "mcp-adapter-path"),
     clientConfigPath: requireElement<HTMLInputElement>(
@@ -119,8 +146,31 @@ function getDialogElements(doc: Document): DialogElements {
       "mcp-client-config-path",
     ),
     browseRuntime: requireElement<HTMLButtonElement>(doc, "mcp-runtime-browse"),
+    browseClientExecutable: requireElement<HTMLButtonElement>(
+      doc,
+      "mcp-client-executable-browse",
+    ),
     browseAdapter: requireElement<HTMLButtonElement>(doc, "mcp-adapter-browse"),
     applyDefaults: requireElement<HTMLButtonElement>(doc, "mcp-apply-defaults"),
+    autoConfigure: requireElement<HTMLButtonElement>(doc, "mcp-auto-configure"),
+    autoConfigureGuidance: requireElement<HTMLElement>(
+      doc,
+      "mcp-auto-configure-guidance",
+    ),
+    autoConfigureStatus: requireElement<HTMLElement>(
+      doc,
+      "mcp-auto-configure-status",
+    ),
+    setupGuidance: requireElement<HTMLElement>(
+      doc,
+      "mcp-client-setup-guidance",
+    ),
+    setupCommand: requireElement<HTMLTextAreaElement>(doc, "mcp-setup-command"),
+    copySetupCommand: requireElement<HTMLButtonElement>(
+      doc,
+      "mcp-copy-setup-command",
+    ),
+    copySetupStatus: requireElement<HTMLElement>(doc, "mcp-setup-copy-status"),
     localRecovery: requireElement<HTMLElement>(doc, "mcp-local-recovery"),
     resetLocalConnection: requireElement<HTMLButtonElement>(
       doc,
@@ -159,6 +209,7 @@ function readPersistedSettings(): McpSettings {
   return normalizePersistedMcpSettings({
     enabled: getPref("mcp.enabled"),
     clientPreset: getPref("mcp.clientPreset"),
+    clientExecutablePath: getPref("mcp.clientExecutablePath"),
     runtimePath: getPref("mcp.runtimePath"),
     adapterPath: getPref("mcp.adapterPath"),
     clientConfigPath: getPref("mcp.clientConfigPath"),
@@ -171,6 +222,7 @@ function writeSettingsToControls(
 ): void {
   elements.enabled.checked = settings.enabled;
   selectClientPreset(elements.clientPreset, settings.clientPreset);
+  elements.clientExecutablePath.value = settings.clientExecutablePath;
   elements.runtimePath.value = settings.runtimePath;
   elements.adapterPath.value = settings.adapterPath;
   elements.clientConfigPath.value = settings.clientConfigPath;
@@ -179,24 +231,30 @@ function writeSettingsToControls(
 function wireControls(state: DialogState): void {
   const { elements } = state;
 
-  elements.enabled.addEventListener("change", () => updateDialogState(state));
-  elements.clientPreset.addEventListener("command", () =>
-    updateDialogState(state),
+  elements.enabled.addEventListener("change", () => draftChanged(state));
+  elements.clientPreset.addEventListener("command", () => {
+    clientPresetChanged(state);
+  });
+  elements.clientExecutablePath.addEventListener("input", () =>
+    draftChanged(state),
   );
-  elements.runtimePath.addEventListener("input", () =>
-    updateDialogState(state),
-  );
-  elements.adapterPath.addEventListener("input", () =>
-    updateDialogState(state),
-  );
+  elements.runtimePath.addEventListener("input", () => draftChanged(state));
+  elements.adapterPath.addEventListener("input", () => draftChanged(state));
   elements.clientConfigPath.addEventListener("input", () =>
-    updateDialogState(state),
+    draftChanged(state),
   );
   elements.browseRuntime.addEventListener("click", () => {
     void browseForPath(
       state,
       state.elements.runtimePath,
       "Select MCP runtime executable",
+    );
+  });
+  elements.browseClientExecutable.addEventListener("click", () => {
+    void browseForPath(
+      state,
+      state.elements.clientExecutablePath,
+      "Select MCP client executable",
     );
   });
   elements.browseAdapter.addEventListener("click", () => {
@@ -208,6 +266,12 @@ function wireControls(state: DialogState): void {
   });
   elements.applyDefaults.addEventListener("click", () => {
     applyClientDefaults(state);
+  });
+  elements.autoConfigure.addEventListener("click", () => {
+    void requestAutoConfigure(state);
+  });
+  elements.copySetupCommand.addEventListener("click", () => {
+    copySetupCommand(state);
   });
   elements.resetLocalConnection.addEventListener("click", () => {
     void resetLocalConnection(state);
@@ -223,6 +287,7 @@ function readDraftSettings(elements: DialogElements): McpSettings {
     enabled: elements.enabled.checked,
     clientPreset:
       elements.clientPreset.selectedItem?.value ?? elements.clientPreset.value,
+    clientExecutablePath: elements.clientExecutablePath.value,
     runtimePath: elements.runtimePath.value,
     adapterPath: elements.adapterPath.value,
     clientConfigPath: elements.clientConfigPath.value,
@@ -231,25 +296,221 @@ function readDraftSettings(elements: DialogElements): McpSettings {
 
 function updateDialogState(state: DialogState): void {
   const draft = readDraftSettings(state.elements);
-  setSubordinateControlsEnabled(state.elements, draft.enabled);
+  setSetupControlsEnabled(state);
+  updateAutoConfigureState(state, draft);
+  updateClientSetup(state, draft);
   const dirty = !settingsEqual(draft, state.persistedSettings);
   updateRecoveryState(state, draft);
   updateStatus(state, draft, dirty);
 }
 
-function setSubordinateControlsEnabled(
-  elements: DialogElements,
-  enabled: boolean,
+function setSetupControlsEnabled(state: DialogState): void {
+  const { elements } = state;
+  const busy =
+    state.autoConfigureInProgress ||
+    state.saveInProgress ||
+    state.resetInProgress;
+  elements.enabled.disabled = busy;
+  elements.clientPreset.disabled = busy;
+  elements.clientExecutablePath.disabled = busy;
+  elements.runtimePath.disabled = busy;
+  elements.adapterPath.disabled = busy;
+  elements.clientConfigPath.disabled = busy;
+  elements.browseRuntime.disabled = busy;
+  elements.browseClientExecutable.disabled = busy;
+  elements.browseAdapter.disabled = busy;
+  elements.applyDefaults.disabled = busy;
+  elements.settingsPanel.setAttribute("aria-busy", String(busy));
+}
+
+function updateAutoConfigureState(
+  state: DialogState,
+  settings: McpSettings,
 ): void {
-  elements.clientPreset.disabled = !enabled;
-  elements.runtimePath.disabled = !enabled;
-  elements.adapterPath.disabled = !enabled;
-  elements.clientConfigPath.disabled = !enabled;
-  elements.browseRuntime.disabled = !enabled;
-  elements.browseAdapter.disabled = !enabled;
-  elements.applyDefaults.disabled = !enabled;
-  elements.settingsPanel.classList.toggle("mcp-settings-disabled", !enabled);
-  elements.settingsPanel.setAttribute("aria-disabled", String(!enabled));
+  const { elements } = state;
+  const clientLabel = getClientLabel(settings.clientPreset);
+  const guided = isGuidedClient(settings.clientPreset);
+  const busy =
+    state.autoConfigureInProgress ||
+    state.saveInProgress ||
+    state.resetInProgress;
+
+  elements.autoConfigure.disabled = busy || !guided;
+  elements.autoConfigure.setAttribute(
+    "data-client-preset",
+    settings.clientPreset,
+  );
+  elements.autoConfigure.textContent = state.autoConfigureInProgress
+    ? "Configuring…"
+    : guided
+      ? `Auto-configure ${clientLabel}`
+      : "Auto-configure";
+  elements.clientExecutablePath.placeholder = getClientExecutableHint(
+    settings.clientPreset,
+  );
+
+  if (guided) {
+    elements.autoConfigureGuidance.textContent = `${clientLabel} and uv must already be installed. Auto-configure will install the adapter bundled in this XPI and register ${MCP_SERVER_NAME}.`;
+    elements.autoConfigureStatus.textContent =
+      state.autoConfigureMessage ??
+      "Ready. Nothing changes until you press Auto-configure.";
+    elements.autoConfigureStatus.setAttribute(
+      "data-status",
+      state.autoConfigureStatusKind,
+    );
+    return;
+  }
+
+  if (settings.clientPreset === "claude-desktop") {
+    elements.autoConfigureGuidance.textContent =
+      "Claude Desktop uses a Desktop Extension install or manual configuration. Open Advanced for the STDIO fallback.";
+    elements.autoConfigureStatus.textContent =
+      "Claude Desktop automatic setup is unavailable here. No files have been changed.";
+    elements.autoConfigureStatus.setAttribute("data-status", "idle");
+    return;
+  }
+
+  elements.autoConfigureGuidance.textContent =
+    "Custom clients use manual configuration. Open Advanced to copy the standard STDIO command.";
+  elements.autoConfigureStatus.textContent =
+    "Custom setup is manual. No files have been changed.";
+  elements.autoConfigureStatus.setAttribute("data-status", "idle");
+}
+
+async function requestAutoConfigure(state: DialogState): Promise<void> {
+  if (
+    state.autoConfigureInProgress ||
+    state.saveInProgress ||
+    state.resetInProgress
+  ) {
+    return;
+  }
+  const settings = readDraftSettings(state.elements);
+  if (!isGuidedClient(settings.clientPreset)) return;
+
+  const clientLabel = getClientLabel(settings.clientPreset);
+  const confirmed = state.win.confirm(
+    `Auto-configure ${clientLabel}? Zotero will install or validate its bundled local adapter, use ${clientLabel}'s own command-line tool to add or replace only the MCP server named ${MCP_SERVER_NAME}, and enable Zotero's authenticated local MCP access if setup succeeds. ${clientLabel} and uv must already be installed. Continue?`,
+  );
+  if (!confirmed) return;
+
+  state.autoConfigureInProgress = true;
+  state.autoConfigureStatusKind = "running";
+  state.autoConfigureMessage = `Installing the local adapter and asking ${clientLabel} to register it…`;
+  state.elements.save.setAttribute("disabled", "true");
+  state.elements.cancel.setAttribute("disabled", "true");
+  updateDialogState(state);
+
+  try {
+    const result = await autoConfigureMcpClient({
+      clientExecutablePath: settings.clientExecutablePath,
+      clientId: settings.clientPreset,
+      homeDir: state.environment.homeDir ?? "",
+      platform: state.environment.platform as "darwin" | "linux" | "win32",
+      replaceExisting: true,
+      runtimePath: settings.runtimePath,
+    });
+    if (!isWindowAlive(state.win)) return;
+
+    const configuredSettings = normalizeMcpSettings({
+      ...settings,
+      enabled: true,
+      clientExecutablePath: result.clientExecutablePath,
+      runtimePath: result.runtimePath,
+      adapterPath: result.adapterPath,
+    });
+    persistMcpSettings(configuredSettings);
+    state.persistedSettings = readPersistedSettings();
+    state.localAuthorizationStatus = "ready";
+    state.showRepairAfterSaveFailure = false;
+    writeSettingsToControls(state.elements, state.persistedSettings);
+    state.autoConfigureStatusKind = "success";
+    state.autoConfigureMessage = `${clientLabel} registration command completed. Restart or reopen ${clientLabel}, then confirm ${MCP_SERVER_NAME} is connected.`;
+  } catch (error) {
+    if (!isWindowAlive(state.win)) return;
+    state.autoConfigureStatusKind = "error";
+    state.autoConfigureMessage =
+      error instanceof McpAutoConfigureError
+        ? error.message
+        : "Automatic setup could not be completed. Review Advanced settings and the selected client's MCP registration before trying again.";
+  } finally {
+    state.autoConfigureInProgress = false;
+    if (isWindowAlive(state.win)) {
+      state.elements.save.removeAttribute("disabled");
+      state.elements.cancel.removeAttribute("disabled");
+      updateDialogState(state);
+    }
+  }
+}
+
+function isGuidedClient(
+  clientPreset: McpSettings["clientPreset"],
+): clientPreset is McpAutoConfigClientId {
+  return (
+    clientPreset === "codex" ||
+    clientPreset === "claude-code" ||
+    clientPreset === "gemini-cli"
+  );
+}
+
+function getClientLabel(clientPreset: McpSettings["clientPreset"]): string {
+  return (
+    MCP_CLIENT_PRESETS.find((preset) => preset.id === clientPreset)?.label ??
+    "Selected client"
+  ).replace(/ \(.+\)$/u, "");
+}
+
+function getClientExecutableHint(
+  clientPreset: McpSettings["clientPreset"],
+): string {
+  switch (clientPreset) {
+    case "codex":
+      return "codex";
+    case "claude-code":
+      return "claude";
+    case "gemini-cli":
+      return "gemini";
+    default:
+      return "Optional";
+  }
+}
+
+function updateClientSetup(state: DialogState, settings: McpSettings): void {
+  const { elements } = state;
+  elements.copySetupStatus.textContent =
+    "No client configuration has been changed.";
+
+  try {
+    elements.setupCommand.value = formatMcpStdioCommand(
+      settings,
+      state.environment.platform,
+    );
+    elements.setupGuidance.textContent = `Use the name ${MCP_SERVER_NAME} and this command in ${getClientLabel(settings.clientPreset)}'s manual STDIO setup. The adapter path may point to Zotero's installed copy or a local developer checkout.`;
+    elements.copySetupCommand.disabled =
+      state.autoConfigureInProgress ||
+      state.saveInProgress ||
+      state.resetInProgress;
+  } catch {
+    elements.setupCommand.value = "";
+    elements.setupGuidance.textContent =
+      "Choose absolute paths to uv and the adapter's server.py to generate the Codex STDIO command.";
+    elements.copySetupCommand.disabled = true;
+  }
+}
+
+function copySetupCommand(state: DialogState): void {
+  const settings = readDraftSettings(state.elements);
+
+  try {
+    const command = formatMcpStdioCommand(settings, state.environment.platform);
+    Cc["@mozilla.org/widget/clipboardhelper;1"]
+      .getService(Ci.nsIClipboardHelper)
+      .copyString(command);
+    state.elements.copySetupStatus.textContent = `Copied. Paste it into ${getClientLabel(settings.clientPreset)}'s STDIO setup; Zotero did not change client configuration.`;
+  } catch {
+    state.elements.copySetupStatus.textContent =
+      "Could not copy automatically. Select the command and copy it manually.";
+  }
 }
 
 function updateStatus(
@@ -337,7 +598,7 @@ async function browseForPath(
     if (!selectedPath) return;
 
     target.value = selectedPath;
-    updateDialogState(state);
+    draftChanged(state);
   } catch {
     showTransientStatus(
       state.elements,
@@ -356,13 +617,35 @@ function applyClientDefaults(state: DialogState): void {
   );
 
   state.elements.runtimePath.value = defaults.runtimePath;
+  state.elements.clientExecutablePath.value = defaults.clientExecutablePath;
   state.elements.adapterPath.value = defaults.adapterPath;
   state.elements.clientConfigPath.value = defaults.clientConfigPath;
+  draftChanged(state);
+}
+
+function clientPresetChanged(state: DialogState): void {
+  // The client executable is client-specific. Clear a previous client's path
+  // while retaining deliberate uv and adapter overrides under Advanced.
+  state.elements.clientExecutablePath.value = "";
+  applyClientDefaults(state);
+}
+
+function draftChanged(state: DialogState): void {
+  if (!state.autoConfigureInProgress) {
+    state.autoConfigureStatusKind = "idle";
+    state.autoConfigureMessage = null;
+  }
   updateDialogState(state);
 }
 
 async function saveSettings(state: DialogState): Promise<void> {
-  if (state.saveInProgress || state.resetInProgress) return;
+  if (
+    state.autoConfigureInProgress ||
+    state.saveInProgress ||
+    state.resetInProgress
+  ) {
+    return;
+  }
   state.saveInProgress = true;
   state.elements.save.setAttribute("disabled", "true");
   state.elements.cancel.setAttribute("disabled", "true");
@@ -377,21 +660,7 @@ async function saveSettings(state: DialogState): Promise<void> {
       if (!isWindowAlive(state.win)) return;
     }
 
-    // Persist opt-out first so a later preference-write failure cannot leave
-    // MCP control active after the user asked to turn it off.
-    if (!settings.enabled) setPref("mcp.enabled", false);
-
-    setPref("mcp.clientPreset", settings.clientPreset);
-    setPref("mcp.runtimePath", settings.runtimePath);
-    setPref("mcp.adapterPath", settings.adapterPath);
-    setPref("mcp.clientConfigPath", settings.clientConfigPath);
-    // Persist opt-in last so partially written path preferences can never
-    // accidentally enable the authenticated control endpoint.
-    if (settings.enabled) setPref("mcp.enabled", true);
-
-    if (!settingsEqual(readPersistedSettings(), settings)) {
-      throw new Error("MCP preferences were not persisted.");
-    }
+    persistMcpSettings(settings);
     state.win.close();
   } catch {
     // Any incomplete save fails closed. Existing local connection state is
@@ -428,7 +697,13 @@ async function saveSettings(state: DialogState): Promise<void> {
 }
 
 async function resetLocalConnection(state: DialogState): Promise<void> {
-  if (state.saveInProgress || state.resetInProgress) return;
+  if (
+    state.autoConfigureInProgress ||
+    state.saveInProgress ||
+    state.resetInProgress
+  ) {
+    return;
+  }
   const settings = readDraftSettings(state.elements);
   if (!localConnectionNeedsRepair(state, settings)) return;
 
@@ -490,6 +765,31 @@ async function resetLocalConnection(state: DialogState): Promise<void> {
   }
 }
 
+function persistMcpSettings(settings: McpSettings): void {
+  try {
+    // Persist opt-out first, then opt-in last, so an incomplete preference
+    // update cannot expose the authenticated control endpoint.
+    setPref("mcp.enabled", false);
+    setPref("mcp.clientPreset", settings.clientPreset);
+    setPref("mcp.clientExecutablePath", settings.clientExecutablePath);
+    setPref("mcp.runtimePath", settings.runtimePath);
+    setPref("mcp.adapterPath", settings.adapterPath);
+    setPref("mcp.clientConfigPath", settings.clientConfigPath);
+    if (settings.enabled) setPref("mcp.enabled", true);
+
+    if (!settingsEqual(readPersistedSettings(), settings)) {
+      throw new Error("MCP preferences were not persisted.");
+    }
+  } catch {
+    try {
+      setPref("mcp.enabled", false);
+    } catch {
+      // The caller reports that disabled state could not be confirmed.
+    }
+    throw new Error("MCP preferences were not persisted.");
+  }
+}
+
 async function refreshLocalAuthorizationStatus(
   state: DialogState,
 ): Promise<void> {
@@ -525,6 +825,7 @@ function settingsEqual(a: McpSettings, b: McpSettings): boolean {
   return (
     a.enabled === b.enabled &&
     a.clientPreset === b.clientPreset &&
+    a.clientExecutablePath === b.clientExecutablePath &&
     a.runtimePath === b.runtimePath &&
     a.adapterPath === b.adapterPath &&
     a.clientConfigPath === b.clientConfigPath

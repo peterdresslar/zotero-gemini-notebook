@@ -3,9 +3,12 @@ import test from "node:test";
 
 import {
   applyMcpClientPreset,
+  createMcpStdioLaunchSpec,
   DEFAULT_MCP_SETTINGS,
+  formatMcpStdioCommand,
   getMcpClientDefaults,
   MCP_CLIENT_PRESETS,
+  MCP_SERVER_NAME,
   normalizeMcpClientPreset,
   normalizePersistedMcpSettings,
   normalizeMcpSettings,
@@ -27,8 +30,12 @@ test("declares the supported MCP client presets", () => {
   assert.deepEqual(MCP_CLIENT_PRESETS, [
     { id: "codex", label: "Codex" },
     { id: "claude-code", label: "Claude Code" },
-    { id: "claude-desktop", label: "Claude Desktop" },
-    { id: "custom", label: "Custom" },
+    { id: "gemini-cli", label: "Gemini CLI" },
+    {
+      id: "claude-desktop",
+      label: "Claude Desktop (extension/manual)",
+    },
+    { id: "custom", label: "Custom (manual)" },
   ]);
   assert.equal(Object.isFrozen(MCP_CLIENT_PRESETS), true);
   assert.equal(
@@ -41,6 +48,7 @@ test("defaults MCP support to off without storing locations or secrets", () => {
   assert.deepEqual(DEFAULT_MCP_SETTINGS, {
     enabled: false,
     clientPreset: "codex",
+    clientExecutablePath: "",
     runtimePath: "",
     adapterPath: "",
     clientConfigPath: "",
@@ -52,6 +60,7 @@ test("defaults MCP support to off without storing locations or secrets", () => {
 test("normalizes supported MCP client preset identifiers", () => {
   assert.equal(normalizeMcpClientPreset(" CODEX "), "codex");
   assert.equal(normalizeMcpClientPreset("Claude-Code"), "claude-code");
+  assert.equal(normalizeMcpClientPreset(" GEMINI-CLI "), "gemini-cli");
   assert.equal(normalizeMcpClientPreset("CLAUDE-DESKTOP"), "claude-desktop");
   assert.equal(normalizeMcpClientPreset("custom"), "custom");
 });
@@ -67,6 +76,7 @@ test("normalizes complete and partial MCP settings", () => {
     normalizeMcpSettings({
       enabled: true,
       clientPreset: " CLAUDE-CODE ",
+      clientExecutablePath: " /Users/researcher/.local/bin/claude ",
       runtimePath: " /opt/homebrew/bin/node ",
       adapterPath: " /opt/zotero-mcp/adapter.py ",
       clientConfigPath: " /Users/researcher/.claude.json ",
@@ -74,6 +84,7 @@ test("normalizes complete and partial MCP settings", () => {
     {
       enabled: true,
       clientPreset: "claude-code",
+      clientExecutablePath: "/Users/researcher/.local/bin/claude",
       runtimePath: "/opt/homebrew/bin/node",
       adapterPath: "/opt/zotero-mcp/adapter.py",
       clientConfigPath: "/Users/researcher/.claude.json",
@@ -96,6 +107,7 @@ test("rejects malformed settings and fields outside the non-secret model", () =>
     { enabled: null },
     { clientPreset: "unknown" },
     { clientPreset: null },
+    { clientExecutablePath: [] },
     { runtimePath: 1 },
     { adapterPath: 1 },
     { clientConfigPath: false },
@@ -111,6 +123,7 @@ test("recovers persisted settings independently by field", () => {
   const recovered = normalizePersistedMcpSettings({
     enabled: true,
     clientPreset: " CLAUDE-DESKTOP ",
+    clientExecutablePath: " /Applications/Claude.app ",
     runtimePath: " /usr/local/bin/node ",
     adapterPath: " /opt/zotero-mcp/adapter.py ",
     clientConfigPath: " /tmp/claude.json ",
@@ -119,6 +132,7 @@ test("recovers persisted settings independently by field", () => {
   assert.deepEqual(recovered, {
     enabled: true,
     clientPreset: "claude-desktop",
+    clientExecutablePath: "/Applications/Claude.app",
     runtimePath: "/usr/local/bin/node",
     adapterPath: "/opt/zotero-mcp/adapter.py",
     clientConfigPath: "/tmp/claude.json",
@@ -130,6 +144,7 @@ test("falls back per invalid persisted field and drops unknown data", () => {
   const recovered = normalizePersistedMcpSettings({
     enabled: "true",
     clientPreset: "retired-client",
+    clientExecutablePath: false,
     runtimePath: 42,
     adapterPath: null,
     clientConfigPath: false,
@@ -141,6 +156,7 @@ test("falls back per invalid persisted field and drops unknown data", () => {
   assert.deepEqual(Object.keys(recovered), [
     "enabled",
     "clientPreset",
+    "clientExecutablePath",
     "runtimePath",
     "adapterPath",
     "clientConfigPath",
@@ -160,6 +176,7 @@ test("recovers valid persisted fields when neighboring fields are stale", () => 
     {
       enabled: true,
       clientPreset: "codex",
+      clientExecutablePath: "",
       runtimePath: "/usr/bin/node",
       adapterPath: "",
       clientConfigPath: "/home/researcher/.codex/config.toml",
@@ -174,9 +191,30 @@ test("recovers valid persisted fields when neighboring fields are stale", () => 
   }
 });
 
+test("migrates persisted settings created before client executable hints", () => {
+  assert.deepEqual(
+    normalizePersistedMcpSettings({
+      enabled: true,
+      clientPreset: "claude-code",
+      runtimePath: "/opt/homebrew/bin/uv",
+      adapterPath: "/opt/zotero-mcp/mcp-adapter/server.py",
+      clientConfigPath: "/Users/researcher/.claude.json",
+    }),
+    {
+      enabled: true,
+      clientPreset: "claude-code",
+      clientExecutablePath: "",
+      runtimePath: "/opt/homebrew/bin/uv",
+      adapterPath: "/opt/zotero-mcp/mcp-adapter/server.py",
+      clientConfigPath: "/Users/researcher/.claude.json",
+    },
+  );
+});
+
 test("computes Codex configuration hints from injected home directories", () => {
   assert.deepEqual(getMcpClientDefaults("codex", MAC_ENVIRONMENT), {
     clientPreset: "codex",
+    clientExecutablePath: "",
     runtimePath: "",
     adapterPath: "",
     clientConfigPath: "/Users/researcher/.codex/config.toml",
@@ -191,6 +229,20 @@ test("computes Codex configuration hints from injected home directories", () => 
       homeDir: "/home/researcher/",
     }).clientConfigPath,
     "/home/researcher/.codex/config.toml",
+  );
+});
+
+test("computes Gemini CLI configuration hints without assuming a binary path", () => {
+  assert.deepEqual(getMcpClientDefaults("gemini-cli", MAC_ENVIRONMENT), {
+    clientPreset: "gemini-cli",
+    clientExecutablePath: "",
+    runtimePath: "",
+    adapterPath: "",
+    clientConfigPath: "/Users/researcher/.gemini/settings.json",
+  });
+  assert.equal(
+    getMcpClientDefaults("gemini-cli", WINDOWS_ENVIRONMENT).clientConfigPath,
+    "C:\\Users\\researcher\\.gemini\\settings.json",
   );
 });
 
@@ -241,6 +293,7 @@ test("computes only documented Claude Desktop location hints", () => {
 test("leaves custom and unavailable client configuration locations blank", () => {
   assert.deepEqual(getMcpClientDefaults("custom", MAC_ENVIRONMENT), {
     clientPreset: "custom",
+    clientExecutablePath: "",
     runtimePath: "",
     adapterPath: "",
     clientConfigPath: "",
@@ -281,6 +334,7 @@ test("applies preset defaults while preserving runtime and adapter overrides", (
     {
       enabled: true,
       clientPreset: "custom",
+      clientExecutablePath: " /Users/researcher/.local/bin/codex ",
       runtimePath: " /opt/homebrew/bin/node ",
       adapterPath: " /opt/zotero-mcp/custom-adapter.py ",
       clientConfigPath: "/tmp/old-config.json",
@@ -292,6 +346,7 @@ test("applies preset defaults while preserving runtime and adapter overrides", (
   assert.deepEqual(applied, {
     enabled: true,
     clientPreset: "codex",
+    clientExecutablePath: "/Users/researcher/.local/bin/codex",
     runtimePath: "/opt/homebrew/bin/node",
     adapterPath: "/opt/zotero-mcp/custom-adapter.py",
     clientConfigPath: "/Users/researcher/.codex/config.toml",
@@ -305,6 +360,7 @@ test("applying custom defaults clears only the client configuration hint", () =>
       {
         enabled: false,
         clientPreset: "codex",
+        clientExecutablePath: " /usr/local/bin/custom-client ",
         runtimePath: " /usr/bin/node ",
         adapterPath: "   ",
         clientConfigPath: "/Users/researcher/.codex/config.toml",
@@ -315,9 +371,128 @@ test("applying custom defaults clears only the client configuration hint", () =>
     {
       enabled: false,
       clientPreset: "custom",
+      clientExecutablePath: "/usr/local/bin/custom-client",
       runtimePath: "/usr/bin/node",
       adapterPath: "",
       clientConfigPath: "",
     },
   );
+});
+
+test("builds a fixed, non-secret stdio launch specification", () => {
+  const settings = {
+    enabled: true,
+    clientPreset: "codex",
+    clientExecutablePath: "/Users/researcher/.local/bin/codex",
+    runtimePath: "/opt/homebrew/bin/uv",
+    adapterPath: "/Users/researcher/zotero-notebooklm/mcp-adapter/server.py",
+    clientConfigPath: "/Users/researcher/.codex/config.toml",
+  };
+
+  assert.equal(MCP_SERVER_NAME, "zotero-gemini-notebook");
+  assert.deepEqual(createMcpStdioLaunchSpec(settings, "darwin"), {
+    serverName: "zotero-gemini-notebook",
+    command: "/opt/homebrew/bin/uv",
+    args: [
+      "--no-config",
+      "--no-python-downloads",
+      "--no-progress",
+      "run",
+      "--isolated",
+      "--locked",
+      "--project",
+      "/Users/researcher/zotero-notebooklm/mcp-adapter",
+      "python",
+      "-E",
+      "-s",
+      "-B",
+      "/Users/researcher/zotero-notebooklm/mcp-adapter/server.py",
+    ],
+  });
+  assert.equal(
+    formatMcpStdioCommand(settings, "darwin"),
+    "/opt/homebrew/bin/uv --no-config --no-python-downloads --no-progress run --isolated --locked --project /Users/researcher/zotero-notebooklm/mcp-adapter python -E -s -B /Users/researcher/zotero-notebooklm/mcp-adapter/server.py",
+  );
+  assert.equal(
+    JSON.stringify(createMcpStdioLaunchSpec(settings, "darwin")).includes(
+      ".codex/config.toml",
+    ),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(createMcpStdioLaunchSpec(settings, "darwin")).includes(
+      ".local/bin/codex",
+    ),
+    false,
+  );
+});
+
+test("quotes POSIX setup paths without changing the launch arguments", () => {
+  const settings = {
+    enabled: false,
+    clientPreset: "codex",
+    runtimePath: "/Users/researcher's Tools/uv",
+    adapterPath: "/Users/researcher's Tools/Zotero MCP/mcp-adapter/server.py",
+    clientConfigPath: "",
+  };
+
+  assert.equal(
+    formatMcpStdioCommand(settings, "darwin"),
+    "'/Users/researcher'\"'\"'s Tools/uv' --no-config --no-python-downloads --no-progress run --isolated --locked --project '/Users/researcher'\"'\"'s Tools/Zotero MCP/mcp-adapter' python -E -s -B '/Users/researcher'\"'\"'s Tools/Zotero MCP/mcp-adapter/server.py'",
+  );
+});
+
+test("formats Windows setup paths using command-line argument quoting", () => {
+  const settings = {
+    enabled: true,
+    clientPreset: "codex",
+    runtimePath: "C:\\Program Files\\uv\\uv.exe",
+    adapterPath: "C:\\Users\\researcher\\Zotero MCP\\mcp-adapter\\server.py",
+    clientConfigPath: "",
+  };
+
+  assert.deepEqual(createMcpStdioLaunchSpec(settings, "win32").args, [
+    "--no-config",
+    "--no-python-downloads",
+    "--no-progress",
+    "run",
+    "--isolated",
+    "--locked",
+    "--project",
+    "C:\\Users\\researcher\\Zotero MCP\\mcp-adapter",
+    "python",
+    "-E",
+    "-s",
+    "-B",
+    "C:\\Users\\researcher\\Zotero MCP\\mcp-adapter\\server.py",
+  ]);
+  assert.equal(
+    formatMcpStdioCommand(settings, "win32"),
+    '"C:\\Program Files\\uv\\uv.exe" --no-config --no-python-downloads --no-progress run --isolated --locked --project "C:\\Users\\researcher\\Zotero MCP\\mcp-adapter" python -E -s -B "C:\\Users\\researcher\\Zotero MCP\\mcp-adapter\\server.py"',
+  );
+});
+
+test("rejects incomplete, relative, malformed, and unexpected adapter paths", () => {
+  const base = {
+    enabled: true,
+    clientPreset: "codex",
+    runtimePath: "/opt/homebrew/bin/uv",
+    adapterPath: "/opt/zotero-mcp/mcp-adapter/server.py",
+    clientConfigPath: "",
+  };
+
+  for (const input of [
+    { ...base, runtimePath: "" },
+    { ...base, adapterPath: "" },
+    { ...base, runtimePath: "uv" },
+    { ...base, adapterPath: "mcp-adapter/server.py" },
+    { ...base, adapterPath: "/opt/zotero-mcp/mcp-adapter/other.py" },
+    { ...base, runtimePath: "/opt/homebrew/bin/uv\n--unsafe" },
+    { ...base, adapterPath: "/opt/zotero-mcp/server.py\u0000suffix" },
+  ]) {
+    assert.throws(() => createMcpStdioLaunchSpec(input, "darwin"), TypeError);
+  }
+
+  assert.throws(() => createMcpStdioLaunchSpec(base, ""), TypeError);
+  assert.throws(() => createMcpStdioLaunchSpec(base, null), TypeError);
 });

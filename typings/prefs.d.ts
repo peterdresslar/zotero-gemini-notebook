@@ -10,6 +10,7 @@ declare namespace _ZoteroTypes {
       "enable": boolean;
       "mcp.enabled": boolean;
       "mcp.clientPreset": string;
+      "mcp.clientExecutablePath": string;
       "mcp.runtimePath": string;
       "mcp.adapterPath": string;
       "mcp.clientConfigPath": string;

@@ -288,19 +288,48 @@ MCP client preset, and resolve or accept separate runtime-executable, adapter-
 entrypoint, and client-configuration locations. Saving the enabled state also
 creates or validates the private local authorization material required for the
 adapter's second hop into Zotero. That implementation detail is provisioned
-automatically and is not part of MCP client configuration. A later phase will
-generate setup text for the user to copy. The dialog must not edit Codex,
-Claude, or another client's configuration file. It also does not install
-Python, `uv`, or FastMCP; start an adapter process; or claim that staging means
-the planned notebook workflow has completed.
+automatically and is not part of MCP client configuration.
+
+The `0.4.0` candidate defines an explicit **Auto-configure** action; this is a
+development contract, not a claim that a finished release can already be
+installed. The source-built XPI embeds exactly the adapter's six runtime files:
+`server.py`, `zotero_control.py`, `zotero_jobs.py`, `zotero_status.py`,
+`pyproject.toml`, and `uv.lock`. Only after the user presses **Auto-configure**
+will Zotero copy those embedded resources into a private, immutable directory
+addressed by the plugin version and their content hash. A typical POSIX path is
+`~/.zotero-gemini-notebook/mcp/adapters/<version>-<content-hash>/`. Older
+installed adapter directories remain valid targets for clients already using
+them.
+
+After installing that local copy, Auto-configure invokes only the selected
+client's own command-line executable, with a fixed argument vector, to register
+the stdio server. Zotero does not invoke a shell, parse or edit a client's
+configuration file directly, or install the MCP client, `uv`, Python, FastMCP,
+or system-wide Python dependencies. The locked adapter environment may download
+its pinned Python dependencies into uv's cache. Repeating Auto-configure
+requires a fresh confirmation and is scoped to restoring the one fixed registration named
+`zotero-gemini-notebook`; it does not reset other MCP servers.
 
 Client presets are configuration guidance rather than model behavior. Codex,
 Claude Desktop, and Claude Code use different configuration surfaces, so each
-future formatter will stay isolated and can be updated when a client format
-changes. Generated stdio configurations will use separate command and argument
-fields plus absolute paths. The adapter path must be stable across Zotero plugin
-updates; an unpacked, version-specific extension path is not a durable client
-target.
+formatter stays isolated and can be updated when a client format changes.
+Codex, Claude Code, and Gemini CLI use their respective client-owned CLI for
+automatic registration. Claude Desktop and custom clients remain manual.
+Auto-configure always installs or revalidates the adapter bundled in the current
+XPI. The **Advanced** section retains the separate absolute executable and
+entrypoint paths plus a copyable stdio command as the manual fallback; its
+custom adapter entrypoint is not executed by Auto-configure, and an unpacked,
+version-specific extension path is never a durable client target. In this
+candidate, Claude Desktop and custom manual setup require a separately available
+adapter checkout or entrypoint.
+
+The registered launch is `uv --no-config --no-python-downloads --no-progress
+run --isolated --locked` against the installed adapter project, followed by
+`python -E -s -B server.py`. Auto-configure first runs a bounded import preflight
+through that same locked environment; it does not start the MCP server. The
+preflight may download the pinned FastMCP dependency graph into uv's cache, but
+the command will not download Python. Each launch uses an isolated environment
+and does not write `.venv` or bytecode into the immutable adapter directory.
 
 Enabling the preference prepares the private local authorization boundary for
 control calls. The diagnostic remains read-only, and the staging action accepts
@@ -432,6 +461,19 @@ be reviewed before the next one depends on it.
 
 ### Manual and end-to-end gates
 
+- Install the source-built candidate XPI, leave MCP disabled with automatic
+  paths blank, and confirm cancelling Auto-configure changes neither Zotero nor
+  the selected client.
+- Run Auto-configure for each guided client on its documented supported OS. A
+  successful run enables local MCP access, persists the immutable bundled
+  adapter path, and requires a client restart or reopen before connection is
+  claimed. Record the exact Zotero, client, `uv`, Python, and OS versions.
+- After restarting the client, call `get_zotero_bridge_status`; then rerun
+  Auto-configure and confirm only `zotero-gemini-notebook` is reset while an
+  unrelated test registration remains unchanged.
+- Confirm a missing client or `uv` fails before Zotero access is enabled, edits
+  and Browse selections clear stale success text, and the Advanced copy-only
+  fallback remains usable while MCP access is off.
 - The existing Zotero dialog and context-menu workflows still stage and import
   supported sources through the Chrome companion.
 - A supported MCP host can stage a job from both a collection key and explicit

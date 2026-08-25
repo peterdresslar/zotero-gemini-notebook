@@ -204,12 +204,52 @@ Zotero to exercise that particular test locally.
 
 ## Add the preview to an MCP host
 
+The `0.4.0` candidate includes an explicit **Auto-configure** action under
+**Tools → Gemini Notebook Connector → Configure MCP...**. This describes the
+current development candidate, not a finished or published installation flow.
+
+The source-built XPI embeds only these six adapter runtime files:
+
+- `server.py`
+- `zotero_control.py`
+- `zotero_jobs.py`
+- `zotero_status.py`
+- `pyproject.toml`
+- `uv.lock`
+
+After the user presses **Auto-configure**, the candidate flow installs those
+embedded files into a private, immutable directory addressed by the plugin
+version and their content hash, such as
+`~/.zotero-gemini-notebook/mcp/adapters/<version>-<content-hash>/`. It then
+invokes only the selected client's own CLI, using a direct executable and fixed
+argument vector, to register the adapter. It does not invoke a shell, read or
+edit the client's configuration file directly, or install the client, `uv`, or
+Python. The locked adapter environment may download its pinned Python
+dependencies into uv's cache; it does not install them system-wide.
+
+The candidate supports automatic registration for Codex, Claude Code, and
+Gemini CLI.
+Claude Desktop and custom clients remain manual. Re-running Auto-configure is
+scoped to restoring only the fixed server registration
+`zotero-gemini-notebook`; it requires a fresh confirmation and does not reset
+unrelated MCP servers.
+
+Auto-configure always installs or revalidates the adapter bundled in the current
+XPI, including when it is run again after an update. The dialog's **Advanced**
+section remains the manual fallback for inspecting or overriding absolute paths
+and copying the standard stdio command; its custom adapter path is never
+executed by Auto-configure. Developer checkouts can also use the command-line
+registration below. Claude Desktop and custom manual setup therefore require a
+separately available adapter checkout or entrypoint in this candidate.
+
 Use absolute paths. For Codex, copy and adapt this command:
 
 ```bash
 codex mcp add zotero-gemini-notebook -- \
-  /absolute/path/to/uv run --locked \
+  /absolute/path/to/uv --no-config --no-python-downloads --no-progress \
+  run --isolated --locked \
   --project /absolute/path/to/zotero-notebooklm/mcp-adapter \
+  python -E -s -B \
   /absolute/path/to/zotero-notebooklm/mcp-adapter/server.py
 ```
 
@@ -220,8 +260,19 @@ Start a new Codex session after adding it, then call
 codex mcp remove zotero-gemini-notebook
 ```
 
-The dialog's client and adapter locations are setup hints only. Zotero does not
-read or modify Codex, Claude, or another MCP client's configuration.
+The registered command uses `uv --no-config --no-python-downloads --no-progress
+run --isolated --locked` against the selected adapter project, followed by
+`python -E -s -B server.py`. Auto-configure runs a bounded import preflight but
+does not start the MCP server. That preflight may download the pinned FastMCP
+dependency graph into uv's cache, but it will not download Python. Each launch
+uses an isolated environment and does not write `.venv` or bytecode into the
+immutable adapter directory. The client, `uv`, and a compatible Python
+installation must already be available.
+
+For Claude Desktop and custom clients, the dialog's locations remain manual
+setup hints for a separately available adapter entrypoint. Zotero does not
+directly read or modify Codex, Claude, Gemini, or another MCP client's
+configuration file.
 
 ## Safety boundary
 
