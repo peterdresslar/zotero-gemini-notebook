@@ -2,7 +2,13 @@ export const CHROME_JOB_EVENT_CONTENT_TYPE =
   "application/vnd.zotero-gemini-notebook.job-event+json";
 export const CHROME_JOB_EVENT_MAX_BODY_BYTES = 1024;
 
-const CHROME_JOB_EVENTS = new Set(["submitted", "unverified", "failed"]);
+const CHROME_JOB_EVENTS = new Set([
+  "submitted",
+  "verifying",
+  "verified",
+  "unverified",
+  "failed",
+]);
 const JOB_ID_PATTERN =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const CLAIM_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;

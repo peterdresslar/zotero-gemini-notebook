@@ -468,6 +468,12 @@ test("enforces the bridge job state machine", () => {
 
   assert.equal(store.transition(staged.jobId, "claimed").state, "claimed");
   assert.equal(store.transition(staged.jobId, "submitted").state, "submitted");
+  for (const state of ["verified", "unverified"]) {
+    assert.throws(
+      () => store.transition(staged.jobId, state),
+      expectStoreError("INVALID_TRANSITION"),
+    );
+  }
   assert.equal(store.transition(staged.jobId, "verifying").state, "verifying");
   assert.equal(
     store.transition(staged.jobId, "unverified").state,

@@ -46,9 +46,12 @@ function stagedItem(id) {
   };
 }
 
-function createStore(items = [stagedItem(1), stagedItem(2)]) {
+function createStore(
+  items = [stagedItem(1), stagedItem(2)],
+  { now = () => 1_787_558_400_000 } = {},
+) {
   const store = createBridgeJobStore({
-    now: () => 1_787_558_400_000,
+    now,
     createId: () => JOB_ID,
   });
   const staged = store.activate({
@@ -130,7 +133,13 @@ test("parses the exact canonical claimant-bound claim request", () => {
 });
 
 test("parses each exact canonical claimant-bound lifecycle event", () => {
-  for (const event of ["submitted", "unverified", "failed"]) {
+  for (const event of [
+    "submitted",
+    "verifying",
+    "verified",
+    "unverified",
+    "failed",
+  ]) {
     const body = `{"claimId":"${CLAIM_ID}","event":"${event}","jobId":"${JOB_ID}"}`;
     assert.deepEqual(parseCanonicalChromeJobEventBody(encoder.encode(body)), {
       claimId: CLAIM_ID,
@@ -180,7 +189,7 @@ test("rejects noncanonical, malformed, or unsafe event documents", () => {
     `{"event":"submitted","claimId":"${CLAIM_ID}","jobId":"${JOB_ID}"}`,
     `{ "claimId":"${CLAIM_ID}","event":"submitted","jobId":"${JOB_ID}"}`,
     `{"claimId":"bad/claim","event":"submitted","jobId":"${JOB_ID}"}`,
-    `{"claimId":"${CLAIM_ID}","event":"verified","jobId":"${JOB_ID}"}`,
+    `{"claimId":"${CLAIM_ID}","event":"cancelled","jobId":"${JOB_ID}"}`,
     `{"claimId":"${CLAIM_ID}","event":"submitted","jobId":"wrong"}`,
     `{"claimId":"${CLAIM_ID}","event":"submitted","jobId":"${JOB_ID}","extra":true}`,
     `{"claimId":"${CLAIM_ID}","event":"submitted","event":"submitted","jobId":"${JOB_ID}"}`,
@@ -287,8 +296,11 @@ test("preserves legacy no-claimId behavior without allowing later claimant bindi
   );
 });
 
-test("reports only claimant-bound events and makes exact repeats idempotent", () => {
-  const { staged, store } = createStore([stagedItem(1)]);
+test("reports claimant-bound verification events in strict order", () => {
+  let timestamp = 1_787_558_400_000;
+  const { staged, store } = createStore([stagedItem(1)], {
+    now: () => timestamp,
+  });
 
   assert.throws(
     () =>
@@ -299,6 +311,12 @@ test("reports only claimant-bound events and makes exact repeats idempotent", ()
 
   store.claimActive(staged.jobId, [101], CLAIM_ID);
 
+  for (const event of ["verifying", "verified"]) {
+    assert.throws(
+      () => reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, event),
+      expectEventConflict,
+    );
+  }
   assert.throws(
     () =>
       reportChromeJobEventToStore(
@@ -309,6 +327,7 @@ test("reports only claimant-bound events and makes exact repeats idempotent", ()
       ),
     expectEventConflict,
   );
+  timestamp += 1_000;
   const submitted = reportChromeJobEventToStore(
     store,
     staged.jobId,
@@ -316,15 +335,90 @@ test("reports only claimant-bound events and makes exact repeats idempotent", ()
     "submitted",
   );
   assert.equal(submitted.state, "submitted");
+  timestamp += 1_000;
   assert.deepEqual(
     reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "submitted"),
     submitted,
   );
+  for (const event of ["verified", "unverified", "failed"]) {
+    assert.throws(
+      () => reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, event),
+      expectEventConflict,
+    );
+  }
+
+  timestamp += 1_000;
+  const verifying = reportChromeJobEventToStore(
+    store,
+    staged.jobId,
+    CLAIM_ID,
+    "verifying",
+  );
+  assert.equal(verifying.state, "verifying");
+  assert.equal(verifying.details, undefined);
+  timestamp += 1_000;
+  assert.deepEqual(
+    reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "verifying"),
+    verifying,
+  );
+  for (const event of ["submitted", "failed"]) {
+    assert.throws(
+      () => reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, event),
+      expectEventConflict,
+    );
+  }
+
+  timestamp += 1_000;
+  const verified = reportChromeJobEventToStore(
+    store,
+    staged.jobId,
+    CLAIM_ID,
+    "verified",
+  );
+  assert.equal(verified.state, "verified");
+  assert.equal(verified.details, undefined);
+  timestamp += 1_000;
+  assert.deepEqual(
+    reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "verified"),
+    verified,
+  );
   assert.throws(
-    () => reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "failed"),
+    () =>
+      reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "unverified"),
     expectEventConflict,
   );
-  assert.equal(store.getJob(staged.jobId).state, "submitted");
+  assert.deepEqual(store.getJob(staged.jobId), verified);
+});
+
+test("records an inconclusive verification only after verifying", () => {
+  const { staged, store } = createStore([stagedItem(1)]);
+  store.claimActive(staged.jobId, [101], CLAIM_ID);
+  reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "submitted");
+  reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "verifying");
+
+  const unverified = reportChromeJobEventToStore(
+    store,
+    staged.jobId,
+    CLAIM_ID,
+    "unverified",
+  );
+  assert.equal(unverified.state, "unverified");
+  assert.deepEqual(unverified.details, {
+    code: "chrome_upload_unverified",
+    message:
+      "Chrome could not confirm that Gemini Notebook accepted the staged sources.",
+    retryable: false,
+  });
+  assert.deepEqual(
+    reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "unverified"),
+    unverified,
+  );
+  assert.throws(
+    () =>
+      reportChromeJobEventToStore(store, staged.jobId, CLAIM_ID, "verified"),
+    expectEventConflict,
+  );
+  assert.deepEqual(store.getJob(staged.jobId), unverified);
 });
 
 test("derives fixed terminal details and rejects post-terminal changes", () => {

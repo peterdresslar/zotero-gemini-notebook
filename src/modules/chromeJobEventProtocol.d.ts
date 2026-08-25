@@ -1,7 +1,12 @@
 export const CHROME_JOB_EVENT_CONTENT_TYPE: string;
 export const CHROME_JOB_EVENT_MAX_BODY_BYTES: number;
 
-export type ChromeJobEvent = "submitted" | "unverified" | "failed";
+export type ChromeJobEvent =
+  | "submitted"
+  | "verifying"
+  | "verified"
+  | "unverified"
+  | "failed";
 
 export interface ChromeJobEventInput {
   claimId: string;

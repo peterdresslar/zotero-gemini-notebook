@@ -96,7 +96,7 @@ export interface BridgeJobStore {
   reportClaimedEvent(
     jobId: string,
     claimId: string,
-    state: "submitted" | "unverified" | "failed",
+    state: "submitted" | "verifying" | "verified" | "unverified" | "failed",
     details?: BridgeJobJson,
   ): BridgeJobSnapshot;
   transition(

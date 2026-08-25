@@ -1,6 +1,12 @@
 import { BridgeJobStoreError } from "./bridgeJobStore.js";
 
-const CHROME_JOB_EVENTS = new Set(["submitted", "unverified", "failed"]);
+const CHROME_JOB_EVENTS = new Set([
+  "submitted",
+  "verifying",
+  "verified",
+  "unverified",
+  "failed",
+]);
 const CHROME_TERMINAL_DETAILS = Object.freeze({
   unverified: Object.freeze({
     code: "chrome_upload_unverified",

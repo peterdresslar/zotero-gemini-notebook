@@ -38,17 +38,7 @@ const ALLOWED_TRANSITIONS = new Map([
     "claimed",
     new Set(["submitted", "unverified", "failed", "cancelled", "expired"]),
   ],
-  [
-    "submitted",
-    new Set([
-      "verifying",
-      "verified",
-      "unverified",
-      "failed",
-      "cancelled",
-      "expired",
-    ]),
-  ],
+  ["submitted", new Set(["verifying", "failed", "cancelled", "expired"])],
   [
     "verifying",
     new Set(["verified", "unverified", "failed", "cancelled", "expired"]),
@@ -58,7 +48,18 @@ const ALLOWED_TRANSITIONS = new Map([
 const DEFAULT_MAX_HISTORY = 100;
 const DEFAULT_CLAIMED_TTL_MS = 60 * 60 * 1000;
 const CLAIM_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-const CLAIMED_EVENT_STATES = new Set(["submitted", "unverified", "failed"]);
+const CLAIMED_EVENT_STATES = new Set([
+  "submitted",
+  "verifying",
+  "verified",
+  "unverified",
+  "failed",
+]);
+const CLAIMED_EVENT_TRANSITIONS = new Map([
+  ["claimed", new Set(["submitted", "unverified", "failed"])],
+  ["submitted", new Set(["verifying"])],
+  ["verifying", new Set(["verified", "unverified"])],
+]);
 const PRIVATE_METADATA_KEYS = new Set(["claimid", "filepath", "items"]);
 const UNSAFE_METADATA_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -290,7 +291,7 @@ export function createBridgeJobStore(options = {}) {
       );
     }
     if (job.state === state) return snapshot(job);
-    if (job.state !== "claimed") {
+    if (!CLAIMED_EVENT_TRANSITIONS.get(job.state)?.has(state)) {
       throw new BridgeJobStoreError(
         "INVALID_TRANSITION",
         `Bridge job cannot report ${state} from ${job.state}`,
