@@ -34,6 +34,15 @@ const geminiControlsFilename = "gemini-controls.js";
 const jobLifecycleFilename = "job-lifecycle.js";
 const backgroundFilename = "background.js";
 const zoteroRuntimeBundleEntry = "content/scripts/zoteroNotebookLM.js";
+const zoteroMcpAdapterPrefix = "content/mcp-adapter/";
+const zoteroMcpAdapterEntries = [
+  "server.py",
+  "zotero_control.py",
+  "zotero_jobs.py",
+  "zotero_status.py",
+  "pyproject.toml",
+  "uv.lock",
+].map((filename) => `${zoteroMcpAdapterPrefix}${filename}`);
 
 function assert(condition, message) {
   if (!condition) {
@@ -73,6 +82,19 @@ function readArchiveEntry(archivePath, entryPath) {
     throw new Error(
       `Could not read ${entryPath} from ${basename(archivePath)}. ` +
         "Install the unzip command and confirm the archive is valid.",
+      { cause: error },
+    );
+  }
+}
+
+function readArchiveEntryBuffer(archivePath, entryPath) {
+  try {
+    return execFileSync("unzip", ["-p", archivePath, entryPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not read ${entryPath} from ${basename(archivePath)}`,
       { cause: error },
     );
   }
@@ -553,6 +575,27 @@ function assertZoteroMcpRuntimePackage(
     );
   }
 
+  const packagedAdapterEntries = packageEntries.filter(
+    (entry) =>
+      entry.startsWith(zoteroMcpAdapterPrefix) &&
+      entry !== zoteroMcpAdapterPrefix,
+  );
+  const missingAdapterEntries = zoteroMcpAdapterEntries.filter(
+    (entry) => !packagedAdapterEntries.includes(entry),
+  );
+  const unexpectedAdapterEntries = packagedAdapterEntries.filter(
+    (entry) => !zoteroMcpAdapterEntries.includes(entry),
+  );
+  assert(
+    missingAdapterEntries.length === 0,
+    `${description} must include the bundled MCP adapter files: ${missingAdapterEntries.join(", ")}`,
+  );
+  assert(
+    unexpectedAdapterEntries.length === 0 &&
+      packagedAdapterEntries.length === zoteroMcpAdapterEntries.length,
+    `${description} contains unexpected MCP adapter files: ${unexpectedAdapterEntries.join(", ")}`,
+  );
+
   for (const marker of [
     "ZGN-LOCAL-AUTH-V1",
     "/notebooklm/control/v1/auth-check",
@@ -571,6 +614,47 @@ function assertZoteroMcpRuntimePackage(
       `${description} runtime bundle must include ${marker}`,
     );
   }
+}
+
+function assertMcpAdapterByteParity(
+  packagedFiles,
+  sourceFiles,
+  description = "Zotero XPI",
+) {
+  for (const entry of zoteroMcpAdapterEntries) {
+    const filename = entry.slice(zoteroMcpAdapterPrefix.length);
+    const packaged = packagedFiles.get(entry);
+    const source = sourceFiles.get(filename);
+    assert(
+      Buffer.isBuffer(packaged) && Buffer.isBuffer(source),
+      `${description} byte comparison is missing ${filename}`,
+    );
+    assert(
+      packaged.equals(source),
+      `${description} bundled MCP adapter differs from source: ${filename}`,
+    );
+  }
+}
+
+async function assertLocalMcpAdapterBytes(xpiPath) {
+  const packagedFiles = new Map(
+    zoteroMcpAdapterEntries.map((entry) => [
+      entry,
+      readArchiveEntryBuffer(xpiPath, entry),
+    ]),
+  );
+  const sourceFiles = new Map(
+    await Promise.all(
+      zoteroMcpAdapterEntries.map(async (entry) => {
+        const filename = entry.slice(zoteroMcpAdapterPrefix.length);
+        return [
+          filename,
+          await readFile(join(projectRoot, "mcp-adapter", filename)),
+        ];
+      }),
+    ),
+  );
+  assertMcpAdapterByteParity(packagedFiles, sourceFiles);
 }
 
 function parseUpdateHash(updateHash) {
@@ -697,6 +781,7 @@ async function validateLocalRelease(packageJSON) {
   const chromePopupHTML = readArchiveEntry(chromePath, "popup.html");
   const zoteroCompatibility = assertZoteroManifest(xpiManifest, expected);
   assertZoteroMcpRuntimePackage(zoteroRuntimeBundle, xpiArchiveEntries);
+  await assertLocalMcpAdapterBytes(xpiPath);
   assertChromeManifest(chromeManifest, expected);
   assertChromeRuntimePackage(
     chromeManifest,
@@ -940,6 +1025,7 @@ if (
 
 export {
   assertChromeRuntimePackage,
+  assertMcpAdapterByteParity,
   assertZoteroMcpRuntimePackage,
   assertUpdateManifest,
   parseUpdateHash,

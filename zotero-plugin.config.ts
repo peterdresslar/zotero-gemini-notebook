@@ -1,4 +1,5 @@
-import { rm } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 
 import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
@@ -8,6 +9,14 @@ const updateFilename = pkg.version.includes("-")
   : "update.json";
 const unusedUpdateFilename =
   updateFilename === "update.json" ? "update-beta.json" : "update.json";
+const mcpAdapterRuntimeFiles = [
+  "server.py",
+  "zotero_control.py",
+  "zotero_jobs.py",
+  "zotero_status.py",
+  "pyproject.toml",
+  "uv.lock",
+] as const;
 
 export default defineConfig({
   source: ["src", "addon"],
@@ -34,6 +43,18 @@ export default defineConfig({
       prefix: pkg.config.prefsPrefix,
     },
     hooks: {
+      "build:copyAssets": async ({ dist }) => {
+        const destination = join(dist, "addon", "content", "mcp-adapter");
+        await mkdir(destination, { recursive: true });
+        await Promise.all(
+          mcpAdapterRuntimeFiles.map((filename) =>
+            copyFile(
+              join("mcp-adapter", filename),
+              join(destination, filename),
+            ),
+          ),
+        );
+      },
       "build:done": async ({ dist }) => {
         // Scaffold always emits update-beta.json. Keep only the manifest that
         // this package actually references so release output is unambiguous.

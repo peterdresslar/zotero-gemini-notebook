@@ -1,8 +1,10 @@
 import nodeAssert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import test from "node:test";
 
 import {
   assertChromeRuntimePackage,
+  assertMcpAdapterByteParity,
   assertUpdateManifest,
   assertZoteroMcpRuntimePackage,
   parseUpdateHash,
@@ -13,6 +15,13 @@ const zoteroPackageEntries = [
   "content/scripts/zoteroNotebookLM.js",
   "content/mcp-config-dialog.xhtml",
   "content/mcp-config-dialog.css",
+  "content/mcp-adapter/",
+  "content/mcp-adapter/server.py",
+  "content/mcp-adapter/zotero_control.py",
+  "content/mcp-adapter/zotero_jobs.py",
+  "content/mcp-adapter/zotero_status.py",
+  "content/mcp-adapter/pyproject.toml",
+  "content/mcp-adapter/uv.lock",
 ];
 const zoteroRuntimeBundle = [
   "ZGN-LOCAL-AUTH-V1",
@@ -245,6 +254,71 @@ test("Zotero runtime package retains the MCP staging boundary", () => {
       /runtime bundle must include/u,
     );
   }
+});
+
+test("Zotero runtime package contains only the six adapter runtime files", () => {
+  for (const requiredEntry of [
+    "content/mcp-adapter/server.py",
+    "content/mcp-adapter/zotero_control.py",
+    "content/mcp-adapter/zotero_jobs.py",
+    "content/mcp-adapter/zotero_status.py",
+    "content/mcp-adapter/pyproject.toml",
+    "content/mcp-adapter/uv.lock",
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertZoteroMcpRuntimePackage(
+          zoteroRuntimeBundle,
+          zoteroPackageEntries.filter((entry) => entry !== requiredEntry),
+        ),
+      /must include the bundled MCP adapter files/u,
+    );
+  }
+
+  for (const unexpectedEntry of [
+    "content/mcp-adapter/README.md",
+    "content/mcp-adapter/tests/test_server.py",
+    "content/mcp-adapter/.venv/bin/python",
+    "content/mcp-adapter/__pycache__/server.cpython-313.pyc",
+    "content/mcp-adapter/server.pyc",
+    "content/mcp-adapter/extra.py",
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertZoteroMcpRuntimePackage(zoteroRuntimeBundle, [
+          ...zoteroPackageEntries,
+          unexpectedEntry,
+        ]),
+      /contains unexpected MCP adapter files/u,
+    );
+  }
+});
+
+test("Zotero runtime package adapter bytes must match their source files", () => {
+  const filenames = [
+    "server.py",
+    "zotero_control.py",
+    "zotero_jobs.py",
+    "zotero_status.py",
+    "pyproject.toml",
+    "uv.lock",
+  ];
+  const sourceFiles = new Map(
+    filenames.map((filename) => [filename, Buffer.from(`source:${filename}`)]),
+  );
+  const packagedFiles = new Map(
+    filenames.map((filename) => [
+      `content/mcp-adapter/${filename}`,
+      Buffer.from(`source:${filename}`),
+    ]),
+  );
+
+  assertMcpAdapterByteParity(packagedFiles, sourceFiles);
+  packagedFiles.set("content/mcp-adapter/server.py", Buffer.from("altered"));
+  nodeAssert.throws(
+    () => assertMcpAdapterByteParity(packagedFiles, sourceFiles),
+    /differs from source: server\.py/u,
+  );
 });
 
 test("Chrome runtime package covers current and legacy notebook hosts", () => {
