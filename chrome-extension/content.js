@@ -304,15 +304,8 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
       return;
     }
 
-    // Current NotebookLM pages expose a persistent xapscotty uploader dropzone in
-    // the source panel. Prefer that before opening secondary upload UI.
-    await requestDropInjection("source-panel-before-dialog", attempt);
-    await sleep(350);
-    if (uploadFinished) {
-      await resultPromise;
-      await sleep(3000);
-      return;
-    }
+    // Synthetic drop dispatch has no acceptance signal. Continue to the real
+    // Add sources input/picker path for both job-bound and legacy imports.
 
     // Step 5: Open the add-sources UI if the persistent upload paths did not work.
     const dialog = await ensureAddSourcesDialog(() => uploadFinished);
@@ -374,14 +367,6 @@ async function uploadFilesIntoCurrentNotebook(files, job) {
         await sleep(3000);
         return;
       }
-    }
-
-    await requestDropInjection("after-clicks", attempt);
-    await sleep(350);
-    if (uploadFinished) {
-      await resultPromise;
-      await sleep(3000);
-      return;
     }
 
     showAssistedUploadPrompt(uploadControls[0], files.length);
@@ -735,47 +720,6 @@ async function requestExistingInjection(reason, attempt) {
       {
         type: "__zotero_to_injector",
         command: "inject-existing",
-        attemptNonce: attempt.attemptNonce,
-        reason,
-      },
-      "*",
-    );
-  });
-}
-
-async function requestDropInjection(reason, attempt) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      window.removeEventListener("message", handler);
-      console.log("[Zotero content] Drop probe timed out (" + reason + ")");
-      resolve(false);
-    }, 1000);
-
-    function handler(e) {
-      if (e.source !== window) return;
-      if (!e.data || e.data.type !== "__zotero_from_injector") return;
-      if (!injectorAttempt.matchesResponse(attempt, e.data)) return;
-      if (e.data.status !== "drop-files") return;
-      if (e.data.reason !== reason) return;
-      clearTimeout(timeout);
-      window.removeEventListener("message", handler);
-      if (e.data.found) {
-        console.log(
-          "[Zotero content] Drop probe dispatched files (" + reason + ")",
-        );
-      } else {
-        console.log(
-          "[Zotero content] Drop probe found no target (" + reason + ")",
-        );
-      }
-      resolve(Boolean(e.data.found));
-    }
-
-    window.addEventListener("message", handler);
-    window.postMessage(
-      {
-        type: "__zotero_to_injector",
-        command: "drop-files",
         attemptNonce: attempt.attemptNonce,
         reason,
       },

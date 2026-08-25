@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const PROTOCOL_VERSION = 2;
+  const PROTOCOL_VERSION = 3;
   const DEFAULT_EXPIRY_MS = 5 * 60 * 1000;
   const MAX_ATTACHMENTS = 50;
   const JOB_ID_PATTERN =
@@ -190,6 +190,16 @@
     });
   }
 
+  function isCompatiblePingResponse(value) {
+    return Boolean(
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      value.ready === true &&
+      value.lifecycleProtocolVersion === PROTOCOL_VERSION,
+    );
+  }
+
   function normalizeJob(message) {
     if (!message || typeof message !== "object" || Array.isArray(message)) {
       throw new TypeError("Upload batch message is invalid");
@@ -244,6 +254,7 @@
     PROTOCOL_VERSION,
     createController,
     createPingResponse,
+    isCompatiblePingResponse,
     isAllowedPopupSender,
   });
 })();

@@ -21,8 +21,7 @@ const ZOTERO_JSON_HEADERS = {
 const { splitBase64IntoChunks } = globalThis.ZoteroUploadTransfer;
 const { readDestination, requestPreparedDestination } =
   globalThis.ZoteroUploadDestination;
-const { PROTOCOL_VERSION: JOB_LIFECYCLE_PROTOCOL_VERSION } =
-  globalThis.ZoteroUploadHandoff;
+const { isCompatiblePingResponse } = globalThis.ZoteroUploadHandoff;
 
 let stagedItems = [];
 let selectedIds = new Set();
@@ -226,10 +225,7 @@ async function doImport() {
   // Verify content script is loaded
   try {
     const ping = await chrome.tabs.sendMessage(tab.id, { action: "ping" });
-    if (
-      jobId &&
-      ping?.lifecycleProtocolVersion !== JOB_LIFECYCLE_PROTOCOL_VERSION
-    ) {
+    if (!isCompatiblePingResponse(ping)) {
       progressText.textContent =
         "The Gemini Notebook tab is using an older connector. Refresh the tab and try again.";
       progressFill.style.width = "0%";

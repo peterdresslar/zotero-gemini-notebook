@@ -33,6 +33,7 @@ const {
   PROTOCOL_VERSION,
   createController,
   createPingResponse,
+  isCompatiblePingResponse,
   isAllowedPopupSender,
 } = globalThis.ZoteroUploadHandoff;
 
@@ -489,11 +490,19 @@ test("legacy null-job handoff skips claim and retains popup-only clear", async (
   assert.equal(harness.uploads[0].job, null);
   assert.equal(shouldUseLegacyPopupClear(null), true);
   assert.equal(shouldUseLegacyPopupClear(JOB_ID), false);
-  assert.equal(PROTOCOL_VERSION, 2);
+  assert.equal(PROTOCOL_VERSION, 3);
   assert.deepEqual(createPingResponse(), {
     ready: true,
-    lifecycleProtocolVersion: 2,
+    lifecycleProtocolVersion: 3,
   });
+  assert.equal(isCompatiblePingResponse(createPingResponse()), true);
+  assert.equal(
+    isCompatiblePingResponse({
+      ready: true,
+      lifecycleProtocolVersion: 2,
+    }),
+    false,
+  );
 });
 
 test("popup sender validation requires the exact extension popup", () => {

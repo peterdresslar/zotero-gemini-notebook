@@ -179,25 +179,16 @@
     if (command === "drop-files") {
       const current = requireCurrentAttempt(attemptNonce);
       if (!current) return;
-      const target = findCandidateDropTarget();
-      const found = Boolean(target && pendingFiles);
-      console.log(
-        "[Zotero injector] Drop probe (" +
-          (reason || "unknown") +
-          "): " +
-          (found ? "found drop target" : "no drop target found"),
-      );
+      console.log("[Zotero injector] Synthetic drop is disabled");
       postStatus(
         "drop-files",
         {
-          found,
+          found: false,
+          dispatched: false,
           reason: reason || null,
         },
         current.attemptNonce,
       );
-      if (found) {
-        doDrop(target, current.attemptNonce);
-      }
       return;
     }
 
@@ -266,43 +257,6 @@
       reply(true, null, current.attemptNonce);
     } catch {
       console.error("[Zotero injector] File injection failed");
-      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
-    }
-  }
-
-  function doDrop(target, attemptNonce) {
-    const current = requireCurrentAttempt(attemptNonce);
-    if (!current) return;
-    const files = pendingFiles;
-
-    if (!target || !files || files.length === 0) {
-      console.error(
-        "[Zotero injector] doDrop called but missing target or files",
-      );
-      clearPendingAttempt();
-      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
-      return;
-    }
-
-    try {
-      const dt = createDataTransfer(files);
-      let invoked = 0;
-      for (const type of ["dragenter", "dragover", "drop"]) {
-        if (!requireCurrentAttempt(current.attemptNonce)) return;
-        invoked += dispatchDragEvent(target, type, dt);
-      }
-
-      clearPendingAttempt();
-      console.log(
-        "[Zotero injector] Dropped " +
-          dt.files.length +
-          " file(s), listeners=" +
-          invoked,
-      );
-      reply(true, null, current.attemptNonce);
-    } catch {
-      console.error("[Zotero injector] File drop failed");
-      clearPendingAttempt();
       reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
     }
   }
@@ -454,13 +408,6 @@
     return inputs.length ? inputs[inputs.length - 1] : null;
   }
 
-  function findCandidateDropTarget() {
-    const candidates = collectDropTargets(document)
-      .filter(isVisible)
-      .sort((a, b) => scoreDropTarget(b) - scoreDropTarget(a));
-    return candidates[0] || null;
-  }
-
   function findCandidateUploadTrigger() {
     const candidates = querySelectorAllDeep(
       document,
@@ -510,43 +457,6 @@
     return results;
   }
 
-  function collectDropTargets(root) {
-    const results = [];
-    const visitedShadowRoots = new Set();
-    const stack = [root];
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || typeof current.querySelectorAll !== "function") continue;
-
-      results.push(
-        ...current.querySelectorAll(
-          "[xapscottyuploaderdropzone], .xap-uploader-dropzone, .sources-list-dropzone",
-        ),
-      );
-
-      for (const el of current.querySelectorAll("*")) {
-        if (matchesDropTargetText(el)) {
-          results.push(el);
-        }
-
-        if (el.shadowRoot && !visitedShadowRoots.has(el.shadowRoot)) {
-          visitedShadowRoots.add(el.shadowRoot);
-          stack.push(el.shadowRoot);
-        }
-      }
-    }
-
-    const dialog =
-      document.querySelector("add-sources-dialog") ||
-      document.querySelector('[role="dialog"]');
-    if (dialog) {
-      results.push(dialog);
-    }
-
-    return Array.from(new Set(results));
-  }
-
   function querySelectorAllDeep(root, selector) {
     const results = [];
     const visitedShadowRoots = new Set();
@@ -567,51 +477,6 @@
     }
 
     return results;
-  }
-
-  function matchesDropTargetText(el) {
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    return (
-      text.includes("upload files") ||
-      text.includes("upload file") ||
-      text.includes("drag and drop") ||
-      text.includes("drop files") ||
-      text.includes("drop file") ||
-      text.includes("browse files") ||
-      text.includes("browse file")
-    );
-  }
-
-  function scoreDropTarget(el) {
-    const tag = el.tagName.toLowerCase();
-    const role = normalizeText(el.getAttribute("role") || "");
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    let score = 0;
-
-    if (el.hasAttribute("xapscottyuploaderdropzone")) score += 100;
-    if (el.classList.contains("sources-list-dropzone")) score += 80;
-    if (el.classList.contains("xap-uploader-dropzone")) score += 80;
-    if (text.includes("upload files")) score += 40;
-    if (
-      text.includes("drag and drop") ||
-      text.includes("drop files") ||
-      text.includes("drop file")
-    ) {
-      score += 30;
-    }
-    if (text.includes("browse files") || text.includes("browse file")) {
-      score += 20;
-    }
-    if (role === "button") score += 10;
-    if (tag === "button") score += 10;
-    if (el.closest("add-sources-dialog")) score += 10;
-    if (tag === "add-sources-dialog") score -= 20;
-
-    return score;
   }
 
   function scoreUploadTrigger(el) {
@@ -668,35 +533,6 @@
       dt.items.add(decodeFile(f));
     }
     return dt;
-  }
-
-  function dispatchDragEvent(target, type, dataTransfer) {
-    let event;
-    try {
-      event = new DragEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        dataTransfer,
-      });
-    } catch {
-      event = new Event(type, {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-      });
-    }
-
-    if (!event.dataTransfer) {
-      Object.defineProperty(event, "dataTransfer", {
-        value: dataTransfer,
-      });
-    }
-
-    target.dispatchEvent(event);
-    return invokeRecordedListeners(target, type, (currentTarget) =>
-      createTrustedEventProxy(event, target, currentTarget, dataTransfer),
-    );
   }
 
   function dispatchTrustedMouseEvent(target, type) {

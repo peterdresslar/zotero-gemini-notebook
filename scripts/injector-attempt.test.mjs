@@ -176,6 +176,154 @@ test("job-bound terminal copy requires restaging and describes only handoff", ()
   assert.match(popupSource, /handed to Gemini Notebook's uploader/u);
 });
 
+test("job-bound content skips synthetic drop and reaches real-input fallback", async () => {
+  const calls = [];
+  let existingProbeCount = 0;
+  let resolveTerminal;
+  const terminalPromise = new Promise((resolve) => {
+    resolveTerminal = resolve;
+  });
+  const uploadFiles = loadContentFunction(
+    "uploadFilesIntoCurrentNotebook",
+    "ensureNotebookDetailPage",
+    {
+      armInjector: async () => calls.push("arm"),
+      clickElement: () => assert.fail("click fallback should not be needed"),
+      console: { log() {} },
+      createInjectorResultWaiter: () => ({
+        cancel: () => calls.push("cancel"),
+        promise: terminalPromise,
+      }),
+      delayedExistingInjection: () => {},
+      delayedUploadTrigger: () => {},
+      dialogUploadStatus: { hide: () => calls.push("hide-status") },
+      disarmInjector: () => calls.push("disarm"),
+      ensureAddSourcesDialog: async () => {
+        calls.push("dialog");
+        return {};
+      },
+      findUploadFileControls: () => [{}],
+      hideAssistedUploadPrompt: () => {},
+      injectorAttempt: {
+        createUploadAttempt: (pathname, randomUUID) => {
+          assert.equal(pathname, NOTEBOOK_A);
+          assert.equal(randomUUID(), ATTEMPT_A);
+          return { attemptNonce: ATTEMPT_A, notebookPathname: NOTEBOOK_A };
+        },
+      },
+      requestDropInjection: async () => {
+        calls.push("drop");
+        assert.fail("job-bound content must not request synthetic drop");
+      },
+      requestExistingInjection: async () => {
+        existingProbeCount += 1;
+        calls.push(`existing-${existingProbeCount}`);
+        if (existingProbeCount === 1) return false;
+        resolveTerminal();
+        return true;
+      },
+      requestTriggerActivation: async () => {
+        calls.push("trigger");
+        return true;
+      },
+      showAssistedUploadPrompt: () => {},
+      sleep: async () => {},
+      crypto: { randomUUID: () => ATTEMPT_A },
+      DELAYED_UPLOAD_TRIGGER_DELAYS_MS: [],
+    },
+  );
+
+  await uploadFiles([{ base64Data: "AA==" }], {
+    createdNewNotebook: false,
+    notebookPathname: NOTEBOOK_A,
+  });
+
+  assert.equal(existingProbeCount, 2);
+  assert.equal(calls.includes("dialog"), true);
+  assert.equal(calls.includes("trigger"), true);
+  assert.equal(calls.includes("drop"), false);
+  assert.equal(calls.includes("cancel"), false);
+  assert.equal(calls.includes("disarm"), false);
+  const uploadSource = readContentFunctionSource(
+    "uploadFilesIntoCurrentNotebook",
+    "ensureNotebookDetailPage",
+  );
+  assert.doesNotMatch(uploadSource, /requestDropInjection\(/u);
+});
+
+test("a new-notebook input timeout becomes unverified and requires restaging", async () => {
+  const events = [];
+  const messages = [];
+  const timeoutError = Object.assign(new Error("fixed timeout"), {
+    code: "upload-timeout",
+  });
+  const uploadBatch = loadContentFunction("uploadBatch", "reportJobLifecycle", {
+    console: { warn() {} },
+    dialogUploadStatus: {
+      hide() {},
+      setAdding() {},
+      showError: (message) => messages.push(message),
+    },
+    hideAssistedUploadPrompt: () => {},
+    isNotebookDetailPage: () => true,
+    JOB_LIFECYCLE_REPORT_WARNING: "fixed report warning",
+    reportJobLifecycle: async (_job, event) => {
+      events.push(event);
+      return true;
+    },
+    uploadDestination: { isDestinationBoundToUrl: () => true },
+    uploadFilesIntoCurrentNotebook: async () => {
+      throw timeoutError;
+    },
+    UPLOAD_TIMEOUT_ERROR_CODE: "upload-timeout",
+    window: { location: { href: `https://notebook.google.com${NOTEBOOK_A}` } },
+  });
+
+  const job = {
+    createdNewNotebook: true,
+    destination: "new",
+    notebookPathname: NOTEBOOK_A,
+  };
+  await assert.rejects(
+    uploadBatch([{}], job),
+    (error) => error === timeoutError,
+  );
+  assert.deepEqual(events, ["unverified"]);
+  assert.equal(events.includes("submitted"), false);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /Check its Sources panel/u);
+  assert.match(messages[0], /restage the sources in Zotero/u);
+  assert.match(messages[0], /return to Gemini Notebook home/u);
+  assert.match(messages[0], /start a new import/u);
+});
+
+test("synthetic-drop byte dispatch is absent in both execution worlds", () => {
+  const uploadSource = readContentFunctionSource(
+    "uploadFilesIntoCurrentNotebook",
+    "ensureNotebookDetailPage",
+  );
+  assert.doesNotMatch(uploadSource, /requestDropInjection\(/u);
+  for (const removedPath of [
+    "doDrop",
+    "dispatchDragEvent",
+    "findCandidateDropTarget",
+    "collectDropTargets",
+    "scoreDropTarget",
+  ]) {
+    assert.equal(injectorSource.includes(removedPath), false);
+  }
+  assert.match(injectorSource, /Synthetic drop is disabled/u);
+});
+
+test("popup rejects a stale v2 content tab even for a null-job import", () => {
+  assert.match(popupSource, /if \(!isCompatiblePingResponse\(ping\)\)/u);
+  assert.doesNotMatch(
+    popupSource,
+    /jobId\s*&&\s*ping\?\.lifecycleProtocolVersion/u,
+  );
+  assert.match(popupSource, /Refresh the tab and try again\./u);
+});
+
 test("main-world valid same-path injection is nonce-tagged", () => {
   const harness = createInjectorHarness(
     `https://notebook.google.com${NOTEBOOK_A}`,
@@ -280,7 +428,7 @@ test("matching disarm clears bytes while a stale disarm does not", () => {
   assert.equal(matchingHarness.lastTerminal().success, false);
 });
 
-test("a successful drop terminates once, clears bytes, and cannot re-drop", () => {
+test("main world refuses synthetic drop for a path-bound job attempt", () => {
   const harness = createInjectorHarness(
     `https://notebook.google.com${NOTEBOOK_A}`,
   );
@@ -291,31 +439,51 @@ test("a successful drop terminates once, clears bytes, and cannot re-drop", () =
     reason: "drop-once",
   });
 
-  assert.deepEqual(harness.dropTarget.dispatchedTypes, [
-    "dragenter",
-    "dragover",
-    "drop",
-  ]);
-  assert.equal(harness.lastTerminal().attemptNonce, ATTEMPT_A);
-  assert.equal(harness.lastTerminal().success, true);
+  assert.deepEqual(harness.dropTarget.dispatchedTypes, []);
   assert.equal(harness.lastResponse("drop-files").attemptNonce, ATTEMPT_A);
+  assert.equal(harness.lastRawResponse("drop-files").dispatched, false);
   assert.equal("target" in harness.lastRawResponse("drop-files"), false);
+  assert.equal(harness.lastTerminal(), null);
 
   harness.command({
     attemptNonce: ATTEMPT_A,
-    command: "drop-files",
-    reason: "drop-again",
+    command: "inject-existing",
+    reason: "after-refused-drop",
   });
-  assert.deepEqual(harness.dropTarget.dispatchedTypes, [
-    "dragenter",
-    "dragover",
-    "drop",
-  ]);
-  assert.equal(harness.lastTerminal().success, false);
-  assert.equal(
-    harness.lastTerminal().error,
-    harness.api.ATTEMPT_MISMATCH_ERROR,
-  );
+  assert.equal(harness.input.files.length, 1);
+  assert.equal(harness.lastTerminal().success, true);
+});
+
+test("main world disables synthetic drop for legacy optional-path attempts", () => {
+  const harness = createInjectorHarness("https://notebook.google.com/");
+  harness.arm(ATTEMPT_C, null);
+  harness.command({
+    attemptNonce: ATTEMPT_C,
+    command: "drop-files",
+    reason: "legacy-drop",
+  });
+
+  assert.deepEqual(harness.dropTarget.dispatchedTypes, []);
+  assert.equal(harness.lastRawResponse("drop-files").dispatched, false);
+  assert.equal(harness.lastTerminal(), null);
+
+  harness.command({
+    attemptNonce: ATTEMPT_C,
+    command: "drop-files",
+    reason: "legacy-drop-again",
+  });
+  assert.deepEqual(harness.dropTarget.dispatchedTypes, []);
+  assert.equal(harness.lastRawResponse("drop-files").dispatched, false);
+  assert.equal(harness.lastTerminal(), null);
+
+  harness.command({
+    attemptNonce: ATTEMPT_C,
+    command: "inject-existing",
+    reason: "legacy-real-input",
+  });
+  assert.equal(harness.input.files.length, 1);
+  assert.equal(harness.lastTerminal().attemptNonce, ATTEMPT_C);
+  assert.equal(harness.lastTerminal().success, true);
 });
 
 test("main-world legacy optional-path flow remains nonce-correlated", () => {
@@ -578,4 +746,19 @@ function createInjectorHarness(initialUrl) {
       window.location.href = url;
     },
   };
+}
+
+function loadContentFunction(name, nextName, context) {
+  return vm.runInNewContext(
+    `(${readContentFunctionSource(name, nextName)})`,
+    context,
+  );
+}
+
+function readContentFunctionSource(name, nextName) {
+  const start = contentSource.indexOf(`async function ${name}`);
+  const end = contentSource.indexOf(`async function ${nextName}`, start + 1);
+  assert.ok(start >= 0, `missing content function ${name}`);
+  assert.ok(end > start, `missing content function boundary ${nextName}`);
+  return contentSource.slice(start, end);
 }
