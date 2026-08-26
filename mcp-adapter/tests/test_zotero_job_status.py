@@ -464,7 +464,11 @@ class JobStatusControlFlowTests(unittest.TestCase):
                 createdAt=1_000,
                 updatedAt=1_200,
                 expiresAt=4_600_000,
-                message=None,
+                message=(
+                    "Chrome handed the files to Gemini Notebook's uploader. "
+                    "This does not confirm that Gemini accepted or displayed "
+                    "every source; check the notebook's Sources panel."
+                ),
                 retryable=False,
             ),
         )
@@ -472,8 +476,11 @@ class JobStatusControlFlowTests(unittest.TestCase):
         self.assertEqual(opener.requests[0].full_url, CONTROL_JOB_STATUS_URL)
         self.assertEqual(opener.requests[0].data, create_job_status_body(job_id=JOB_ID))
         self.assertEqual(opener.timeouts, [zotero_jobs.CONTROL_TIMEOUT_SECONDS])
-        self.assertNotIn("source", repr(result).lower())
-        self.assertNotIn("claim", repr(result).lower())
+        result_repr = repr(result).lower()
+        self.assertNotIn("source=", result_repr)
+        self.assertNotIn("items=", result_repr)
+        self.assertNotIn("claimid=", result_repr)
+        self.assertNotIn("filepath=", result_repr)
 
     def test_accepts_every_public_lifecycle_state(self) -> None:
         states = (

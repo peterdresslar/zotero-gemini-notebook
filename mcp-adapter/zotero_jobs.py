@@ -230,6 +230,53 @@ _PREFLIGHT_FAILURES = frozenset(
     }
 )
 _JOB_STATES = frozenset(BridgeJobState.__args__)
+_JOB_STATE_MESSAGES: dict[BridgeJobState, str] = {
+    "staged": (
+        "This job is queued in Zotero; the staging tool did not create a Gemini "
+        "Notebook or upload files. Before expiry, in Chrome open Gemini "
+        "Notebook—home for new or the intended existing notebook—then click "
+        "Import in the Zotero to Gemini Notebook extension."
+    ),
+    "claimed": (
+        "The Chrome extension claimed this job and began the handoff. Gemini "
+        "Notebook has not yet been confirmed to have received or displayed the "
+        "sources."
+    ),
+    "submitted": (
+        "Chrome handed the files to Gemini Notebook's uploader. This does not "
+        "confirm that Gemini accepted or displayed every source; check the "
+        "notebook's Sources panel."
+    ),
+    "verifying": (
+        "Chrome is checking the destination notebook's visible Sources list. "
+        "Verification is not complete."
+    ),
+    "verified": (
+        "Chrome observed the expected sources in the destination notebook. "
+        "This confirms visible source rows, not file-content integrity or "
+        "completed Gemini processing."
+    ),
+    "unverified": (
+        "Chrome attempted the handoff but could not confirm the expected "
+        "sources. Check the notebook's Sources panel before staging again to "
+        "avoid duplicates."
+    ),
+    "failed": (
+        "Chrome reported that the handoff failed. Check the notebook's Sources "
+        "panel before staging again."
+    ),
+    "cancelled": (
+        "This job was cancelled and is no longer available to the Chrome "
+        "extension."
+    ),
+    "expired": (
+        "This job expired before completion. Stage a new job with a new request "
+        "ID."
+    ),
+    "superseded": (
+        "This job was superseded before completion. Use the newer staged job."
+    ),
+}
 _CREATE_JOB_ERROR_CODES = frozenset(
     {
         "invalid_request",
@@ -699,7 +746,7 @@ def parse_stage_job_success(document: object) -> ZoteroImportJobResult:
         createdAt=created_at,
         updatedAt=updated_at,
         expiresAt=expires_at,
-        message=None,
+        message=_JOB_STATE_MESSAGES[state],
         retryable=False,
     )
 
@@ -725,7 +772,7 @@ def parse_job_status_success(
         createdAt=staged_result.createdAt,
         updatedAt=staged_result.updatedAt,
         expiresAt=staged_result.expiresAt,
-        message=None,
+        message=_JOB_STATE_MESSAGES[staged_result.state],
         retryable=False,
     )
 

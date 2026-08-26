@@ -406,7 +406,13 @@ class JobResponseTests(unittest.TestCase):
                 createdAt=1_000,
                 updatedAt=1_100,
                 expiresAt=None,
-                message=None,
+                message=(
+                    "This job is queued in Zotero; the staging tool did not "
+                    "create a Gemini Notebook or upload files. Before expiry, "
+                    "in Chrome open Gemini Notebook—home for new or the intended "
+                    "existing notebook—then click Import in the Zotero to "
+                    "Gemini Notebook extension."
+                ),
                 retryable=False,
             ),
         )
@@ -417,6 +423,27 @@ class JobResponseTests(unittest.TestCase):
         self.assertEqual(retained.status, "ok")
         self.assertEqual(retained.state, "claimed")
         self.assertEqual(retained.expiresAt, 4_700_000)
+
+    def test_success_messages_explain_every_lifecycle_state(self) -> None:
+        messages: dict[str, str] = {}
+        for state in zotero_jobs.BridgeJobState.__args__:
+            with self.subTest(state=state):
+                result = parse_stage_job_success(job_document(state=state))
+                self.assertIsInstance(result.message, str)
+                assert result.message is not None
+                self.assertLessEqual(len(result.message), 256)
+                messages[state] = result.message
+
+        self.assertIn("job is queued in Zotero", messages["staged"])
+        self.assertIn(
+            "staging tool did not create a Gemini Notebook or upload files",
+            messages["staged"],
+        )
+        self.assertIn("click Import", messages["staged"])
+        self.assertIn("does not confirm", messages["submitted"])
+        self.assertIn("before staging again", messages["unverified"])
+        self.assertIn("new request ID", messages["expired"])
+        self.assertEqual(len(set(messages.values())), len(messages))
 
     def test_rejects_extra_private_fields_and_malformed_job_values(self) -> None:
         cases: list[object] = [

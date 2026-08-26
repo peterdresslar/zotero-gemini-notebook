@@ -33,6 +33,18 @@ EXPECTED_STATUS = {
     "pluginVersion": "Zotero Gemini Notebook 0.4.0",
 }
 
+STAGED_MESSAGE = (
+    "This job is queued in Zotero; the staging tool did not create a Gemini "
+    "Notebook or upload files. Before expiry, in Chrome open Gemini Notebook—"
+    "home for new or the intended existing notebook—then click Import in the "
+    "Zotero to Gemini Notebook extension."
+)
+SUBMITTED_MESSAGE = (
+    "Chrome handed the files to Gemini Notebook's uploader. This does not "
+    "confirm that Gemini accepted or displayed every source; check the "
+    "notebook's Sources panel."
+)
+
 EXPECTED_JOB = {
     "status": "ok",
     "jobId": "123e4567-e89b-42d3-a456-426614174000",
@@ -42,13 +54,14 @@ EXPECTED_JOB = {
     "createdAt": 1_000,
     "updatedAt": 1_100,
     "expiresAt": None,
-    "message": None,
+    "message": STAGED_MESSAGE,
     "retryable": False,
 }
 
 EXPECTED_STATUS_JOB = {
     **EXPECTED_JOB,
     "state": "submitted",
+    "message": SUBMITTED_MESSAGE,
 }
 
 SERVER_PATH = ADAPTER_DIR / "server.py"
@@ -177,7 +190,7 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
             createdAt=1_000,
             updatedAt=1_100,
             expiresAt=None,
-            message=None,
+            message=STAGED_MESSAGE,
             retryable=False,
         )
         with patch.object(
@@ -205,9 +218,22 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(tool.annotations.destructiveHint, False)
         self.assertIs(tool.annotations.idempotentHint, True)
         self.assertIs(tool.annotations.openWorldHint, False)
-        self.assertIn("later starts the Chrome import", tool.description)
-        self.assertIn("active Gemini Notebook", tool.description)
+        self.assertEqual(tool.title, "Queue Zotero sources for Chrome import")
+        self.assertIn("returned state and message", tool.description)
+        self.assertIn("only queues files in Zotero", tool.description)
+        self.assertIn("intended existing notebook", tool.description)
         self.assertIn("new notebook", tool.description)
+        self.assertIn("extension and clicks Import", tool.description)
+        self.assertIn("even submitted or expired", tool.description)
+        self.assertIn(
+            "does not restage files or extend expiresAt",
+            tool.description,
+        )
+        self.assertIn("Use a new request_id for a new handoff", tool.description)
+        self.assertIn("Unix epoch milliseconds", tool.description)
+        self.assertIn("expire one hour after staging", tool.description)
+        self.assertIn("itemCount is the number of queued files", tool.description)
+        self.assertIn("does not identify individual reasons", tool.description)
         self.assertNotIn(
             "job_not_found",
             tool.outputSchema["properties"]["status"]["enum"],
@@ -250,7 +276,7 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
             createdAt=1_000,
             updatedAt=1_100,
             expiresAt=None,
-            message=None,
+            message=SUBMITTED_MESSAGE,
             retryable=False,
         )
         with patch.object(
@@ -274,6 +300,8 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(tool.annotations.destructiveHint, False)
         self.assertIs(tool.annotations.idempotentHint, True)
         self.assertIs(tool.annotations.openWorldHint, False)
+        self.assertIn("fixed actionable message", tool.description)
+        self.assertIn("submitted means only", tool.description)
         self.assertEqual(set(tool.inputSchema["properties"]), {"job_id"})
         self.assertEqual(set(tool.inputSchema["required"]), {"job_id"})
         status_values = set(tool.outputSchema["properties"]["status"]["enum"])

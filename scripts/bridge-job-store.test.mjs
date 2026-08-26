@@ -331,6 +331,15 @@ test("returns the retained result for an idempotent request ID", () => {
   assert.deepEqual(repeatedClaimed, claimed);
   assert.equal(store.getActiveJob(), null);
 
+  const submitted = store.transition(first.jobId, "submitted");
+  const repeatedSubmitted = store.activate(
+    activation({ requestId: "stable-request", expiresAt: 9_999_999 }),
+  );
+  assert.deepEqual(repeatedSubmitted, submitted);
+  assert.equal(repeatedSubmitted.state, "submitted");
+  assert.equal(repeatedSubmitted.expiresAt, claimed.expiresAt);
+  assert.equal(store.getActiveJob(), null);
+
   const next = store.activate(activation({ items: [stagedItem(4)] }));
   assert.equal(next.jobId, "opaque-job-2");
 });

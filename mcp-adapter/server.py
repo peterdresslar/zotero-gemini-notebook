@@ -35,7 +35,18 @@ mcp = FastMCP(
         "filesystem paths. It can stage an idempotent Zotero import job from "
         "stable item or collection keys and read back that job's sanitized "
         "lifecycle state, but staging or submission does not mean that Chrome "
-        "created a Gemini Notebook or verified the uploaded sources."
+        "created a Gemini Notebook or verified the uploaded sources. This "
+        "server does not search library metadata, rank sources, or inspect "
+        "attachment contents. If another Zotero interface performs discovery "
+        "or selection, attribute those actions to that separate interface. "
+        "After a staging call, interpret the returned state rather than the "
+        "tool verb, and lead with the returned state and message before "
+        "listing sources. If the state is staged, say that the files are "
+        "queued only in Zotero, "
+        "that no upload has occurred, and that the user must finish the "
+        "handoff with the Zotero to Gemini Notebook Chrome extension. Treat "
+        "expiresAt as Unix epoch milliseconds. A non-staged result from this "
+        "tool may be an idempotent replay; do not call it newly queued."
     ),
     mask_error_details=True,
 )
@@ -64,15 +75,25 @@ def get_zotero_bridge_status() -> ZoteroBridgeStatus:
 
 @mcp.tool(
     name="stage_zotero_import_job",
-    title="Stage Zotero import job",
+    title="Queue Zotero sources for Chrome import",
     description=(
         "Resolve stable Zotero item or collection keys and stage their "
-        "supported local attachments for a later Chrome import. When the user "
-        "later starts the Chrome import, it targets the active Gemini Notebook "
-        "or creates a new notebook if started from the Gemini Notebook home "
-        "page. Staging does not create the notebook or claim that any source "
-        "was uploaded. Provide exactly one of item_keys or collection_key, "
-        "and reuse the same request_id only for the same request."
+        "supported local attachments for a later Chrome import. Report the "
+        "returned state and message before any source summary. A staged job "
+        "only queues files in Zotero; it does not create a notebook or upload "
+        "a source. To continue, the user opens Gemini Notebook in Chrome—home "
+        "for a new notebook or the intended existing notebook—then opens the "
+        "Zotero to Gemini Notebook extension and clicks Import. An idempotent "
+        "retry returns the existing job at its current state—even submitted or "
+        "expired—and does not restage files or extend expiresAt. Do not call it "
+        "a newly created queue based on the tool name or status alone; report "
+        "the returned state. Use a new request_id for a new handoff. expiresAt "
+        "is Unix epoch milliseconds; new jobs normally expire one hour after "
+        "staging. itemCount is the number of queued files. skippedCount counts "
+        "requested or resolved candidates not admitted as supported readable "
+        "local attachments; it does not identify individual reasons. Provide "
+        "exactly one of item_keys or collection_key, and reuse the same "
+        "request_id only for the same request."
     ),
     annotations={
         "readOnlyHint": False,
@@ -105,9 +126,11 @@ def stage_zotero_import_job(
     title="Get Zotero import job",
     description=(
         "Read one previously returned opaque Zotero import-job ID and return "
-        "only its sanitized lifecycle state, counts, and timestamps. This "
-        "does not return source metadata, files, claim credentials, or a "
-        "Gemini Notebook URL."
+        "only its sanitized lifecycle state, counts, timestamps, fixed "
+        "actionable message, and retryability. Report the returned state and "
+        "message together; submitted means only that Chrome handed files to "
+        "Gemini's uploader. This does not return source metadata, files, claim "
+        "credentials, or a Gemini Notebook URL."
     ),
     annotations={
         "readOnlyHint": True,
