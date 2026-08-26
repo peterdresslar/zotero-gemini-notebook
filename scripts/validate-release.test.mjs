@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import test from "node:test";
 
 import {
+  assertChromePackageByteParity,
+  assertChromePackageInventory,
   assertChromeRuntimePackage,
   assertMcpAdapterByteParity,
   assertUpdateManifest,
@@ -39,13 +41,13 @@ const zoteroRuntimeBundle = [
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
-  version: "0.3.4",
+  version: "0.4.0",
   config: {
     addonName: "Zotero Gemini Notebook",
     addonID: "zotero-notebooklm@peterdresslar.com",
   },
   companionCompatibility: {
-    validVersions: ["0.3.2", "0.3.3", "0.3.4"],
+    validVersions: ["0.4.0"],
   },
   repository: {
     url: "git+https://github.com/peterdresslar/zotero-gemini-notebook.git",
@@ -58,7 +60,7 @@ const compatibility = {
 };
 
 const chromeManifest = {
-  version: "0.3.4",
+  version: "0.4.0",
   permissions: ["activeTab"],
   host_permissions: [
     "http://127.0.0.1:23119/*",
@@ -104,20 +106,26 @@ const popupHTML = `
 `;
 
 const chromePackageEntries = [
-  "manifest.json",
-  "upload-transfer.js",
-  "destination.js",
-  "injector-attempt.js",
-  "upload-handoff.js",
-  "dialog-upload-status.js",
-  "bridge-requests.js",
-  "gemini-controls.js",
-  "job-lifecycle.js",
   "background.js",
+  "bridge-requests.js",
+  "compatibility.js",
   "content.js",
+  "destination.js",
+  "dialog-upload-status.js",
+  "gemini-controls.js",
+  "icons/",
+  "icons/icon128.png",
+  "icons/icon16.png",
+  "icons/icon48.png",
+  "injector-attempt.js",
   "injector.js",
+  "job-lifecycle.js",
+  "manifest.json",
   "popup.html",
   "popup.js",
+  "source-verification.js",
+  "upload-transfer.js",
+  "upload-handoff.js",
 ];
 
 function updateManifest(expected, overrides = {}) {
@@ -155,7 +163,7 @@ test("release context pins the stable identity and URLs", () => {
   );
   nodeAssert.equal(
     context.xpiURL,
-    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.3.4/zotero-gemini-notebook.xpi",
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.4.0/zotero-gemini-notebook.xpi",
   );
   nodeAssert.equal(context.updateFilename, "update.json");
   nodeAssert.equal(context.unusedUpdateFilename, "update-beta.json");
@@ -204,7 +212,7 @@ test("release context rejects a companion excluded by its paired plugin", () => 
           validVersions: ["0.3.1"],
         },
       }),
-    /Chrome extension 0\.3\.4 must be compatible/,
+    /Chrome extension 0\.4\.0 must be compatible/,
   );
 });
 
@@ -212,8 +220,8 @@ test("release context rejects invalid companion allowlists", () => {
   for (const validVersions of [
     undefined,
     [],
-    ["0.3.4", null],
-    ["0.3.4", "0.3.4"],
+    ["0.4.0", null],
+    ["0.4.0", "0.4.0"],
   ]) {
     nodeAssert.throws(() =>
       releaseContext({
@@ -228,6 +236,37 @@ test("release context rejects invalid companion allowlists", () => {
 test("Chrome runtime package includes and loads the content helpers", () => {
   nodeAssert.doesNotThrow(() =>
     assertChromeRuntimePackage(chromeManifest, popupHTML, chromePackageEntries),
+  );
+});
+
+test("Chrome package inventory and bytes exactly match the fixed source set", () => {
+  nodeAssert.doesNotThrow(() =>
+    assertChromePackageInventory(chromePackageEntries),
+  );
+  for (const entries of [
+    chromePackageEntries.slice(1),
+    [...chromePackageEntries, "debug.log"],
+    [...chromePackageEntries, "manifest.json"],
+  ]) {
+    nodeAssert.throws(
+      () => assertChromePackageInventory(entries),
+      /fixed Chrome package inventory|duplicate entries/u,
+    );
+  }
+
+  const sourceFiles = new Map(
+    chromePackageEntries
+      .filter((entry) => !entry.endsWith("/"))
+      .map((entry) => [entry, Buffer.from(`source:${entry}`)]),
+  );
+  const packagedFiles = new Map(
+    [...sourceFiles].map(([entry, bytes]) => [entry, Buffer.from(bytes)]),
+  );
+  assertChromePackageByteParity(packagedFiles, sourceFiles);
+  packagedFiles.set("popup.js", Buffer.from("altered"));
+  nodeAssert.throws(
+    () => assertChromePackageByteParity(packagedFiles, sourceFiles),
+    /differs from source: popup\.js/u,
   );
 });
 

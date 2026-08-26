@@ -33,6 +33,31 @@ const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
 const jobLifecycleFilename = "job-lifecycle.js";
 const backgroundFilename = "background.js";
+const chromePackageEntries = [
+  backgroundFilename,
+  bridgeRequestsFilename,
+  "compatibility.js",
+  "content.js",
+  destinationFilename,
+  dialogUploadStatusFilename,
+  geminiControlsFilename,
+  "icons/",
+  "icons/icon128.png",
+  "icons/icon16.png",
+  "icons/icon48.png",
+  injectorAttemptFilename,
+  "injector.js",
+  jobLifecycleFilename,
+  "manifest.json",
+  "popup.html",
+  "popup.js",
+  "source-verification.js",
+  uploadHandoffFilename,
+  uploadTransferFilename,
+].sort();
+const chromePackageFiles = chromePackageEntries.filter(
+  (entry) => !entry.endsWith("/"),
+);
 const zoteroRuntimeBundleEntry = "content/scripts/zoteroNotebookLM.js";
 const zoteroMcpAdapterPrefix = "content/mcp-adapter/";
 const zoteroMcpAdapterEntries = [
@@ -157,6 +182,72 @@ function assertArchiveIntegrity(archivePath) {
       cause: error,
     });
   }
+}
+
+function assertExactEntries(actualEntries, expectedEntries, description) {
+  assert(
+    Array.isArray(actualEntries) &&
+      actualEntries.every((entry) => typeof entry === "string"),
+    `${description} entries must be strings`,
+  );
+  assert(
+    new Set(actualEntries).size === actualEntries.length,
+    `${description} must not contain duplicate entries`,
+  );
+  const actual = [...actualEntries].sort();
+  const expected = [...expectedEntries].sort();
+  assert(
+    JSON.stringify(actual) === JSON.stringify(expected),
+    `${description} inventory differs from the fixed Chrome package inventory`,
+  );
+}
+
+function assertChromePackageInventory(entries, { sourceFiles = false } = {}) {
+  assertExactEntries(
+    entries,
+    sourceFiles ? chromePackageFiles : chromePackageEntries,
+    sourceFiles ? "Chrome extension source" : "Chrome extension package",
+  );
+}
+
+function assertChromePackageByteParity(packagedFiles, sourceFiles) {
+  assert(packagedFiles instanceof Map, "Packaged Chrome files must be a Map");
+  assert(sourceFiles instanceof Map, "Source Chrome files must be a Map");
+  for (const filename of chromePackageFiles) {
+    const packaged = packagedFiles.get(filename);
+    const source = sourceFiles.get(filename);
+    assert(
+      Buffer.isBuffer(packaged) && Buffer.isBuffer(source),
+      `Missing Chrome package byte comparison for ${filename}`,
+    );
+    assert(
+      packaged.equals(source),
+      `Chrome package entry differs from source: ${filename}`,
+    );
+  }
+}
+
+async function listDirectoryFiles(directory, prefix = "") {
+  const files = [];
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolutePath = join(directory, entry.name);
+    assert(
+      !entry.isSymbolicLink(),
+      `Chrome extension source must not contain symlinks: ${relativePath}`,
+    );
+    if (entry.isDirectory()) {
+      files.push(...(await listDirectoryFiles(absolutePath, relativePath)));
+    } else {
+      assert(
+        entry.isFile(),
+        `Chrome extension source contains an unsupported entry: ${relativePath}`,
+      );
+      files.push(relativePath);
+    }
+  }
+  return files.sort();
 }
 
 function repositoryFromPackage(packageJSON) {
@@ -747,6 +838,8 @@ async function validateLocalRelease(packageJSON) {
     "utf8",
   );
   const sourceChromeEntries = await readdir(chromeSourceDirectory);
+  const sourceChromeFiles = await listDirectoryFiles(chromeSourceDirectory);
+  assertChromePackageInventory(sourceChromeFiles, { sourceFiles: true });
   assertChromeRuntimePackage(
     sourceChromeManifest,
     sourcePopupHTML,
@@ -771,6 +864,7 @@ async function validateLocalRelease(packageJSON) {
   assertArchiveHygiene(xpiPath, xpiArchiveEntries);
   const chromeArchiveEntries = listArchiveEntries(chromePath);
   assertArchiveHygiene(chromePath, chromeArchiveEntries);
+  assertChromePackageInventory(chromeArchiveEntries);
 
   const xpiManifest = readArchiveJSON(xpiPath, "manifest.json");
   const zoteroRuntimeBundle = readArchiveEntry(
@@ -789,6 +883,21 @@ async function validateLocalRelease(packageJSON) {
     chromeArchiveEntries,
     "Chrome extension package",
   );
+  const sourceChromeBytes = new Map(
+    await Promise.all(
+      chromePackageFiles.map(async (filename) => [
+        filename,
+        await readFile(join(chromeSourceDirectory, filename)),
+      ]),
+    ),
+  );
+  const packagedChromeBytes = new Map(
+    chromePackageFiles.map((filename) => [
+      filename,
+      readArchiveEntryBuffer(chromePath, filename),
+    ]),
+  );
+  assertChromePackageByteParity(packagedChromeBytes, sourceChromeBytes);
 
   const updateManifest = await readJSON(
     updatePath,
@@ -1024,6 +1133,8 @@ if (
 }
 
 export {
+  assertChromePackageByteParity,
+  assertChromePackageInventory,
   assertChromeRuntimePackage,
   assertMcpAdapterByteParity,
   assertZoteroMcpRuntimePackage,

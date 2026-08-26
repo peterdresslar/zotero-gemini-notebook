@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zotero to Gemini Notebook",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Import staged Zotero sources into Gemini Notebook",
   "permissions": ["activeTab"],
   "host_permissions": [
