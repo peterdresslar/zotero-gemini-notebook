@@ -8,6 +8,10 @@ const MAX_ARGUMENT_LENGTH = 4096;
 const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_LIMIT_BYTES = 64 * 1024;
+const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
+  ArrayBuffer.prototype,
+  "byteLength",
+)?.get;
 const PROCESS_PLAN_KEYS = new Set([
   "argv",
   "clientId",
@@ -397,17 +401,18 @@ async function readBoundedPipe(pipe, maxOutputBytes) {
   let truncated = false;
   while (true) {
     const buffer = await pipe.read();
-    if (!(buffer instanceof ArrayBuffer)) {
+    const bufferView = toLocalArrayBufferView(buffer);
+    if (bufferView === null) {
       throw new Error("Gecko returned invalid process output.");
     }
-    if (buffer.byteLength === 0) break;
+    if (bufferView.byteLength === 0) break;
 
     const remaining = maxOutputBytes - retainedBytes;
     if (remaining > 0) {
-      const take = Math.min(remaining, buffer.byteLength);
-      retained.push(new Uint8Array(buffer.slice(0, take)));
+      const take = Math.min(remaining, bufferView.byteLength);
+      retained.push(bufferView.slice(0, take));
       retainedBytes += take;
-      if (take < buffer.byteLength) truncated = true;
+      if (take < bufferView.byteLength) truncated = true;
     } else {
       truncated = true;
     }
@@ -423,6 +428,26 @@ async function readBoundedPipe(pipe, maxOutputBytes) {
     text: new globalThis.TextDecoder().decode(bytes),
     truncated,
   });
+}
+
+function toLocalArrayBufferView(value) {
+  // Subprocess.sys.mjs creates its buffers in Gecko's module realm. An
+  // ArrayBuffer from that realm does not necessarily satisfy this sandbox's
+  // `instanceof ArrayBuffer`, even though it is a valid process-output buffer.
+  if (typeof ARRAY_BUFFER_BYTE_LENGTH_GETTER !== "function") {
+    return null;
+  }
+  try {
+    const byteLength = Reflect.apply(
+      ARRAY_BUFFER_BYTE_LENGTH_GETTER,
+      value,
+      [],
+    );
+    const view = new Uint8Array(value);
+    return view.byteLength === byteLength ? view : null;
+  } catch {
+    return null;
+  }
 }
 
 function boundText(value, maxOutputBytes) {

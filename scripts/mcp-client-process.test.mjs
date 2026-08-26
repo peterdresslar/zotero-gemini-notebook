@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import vm from "node:vm";
 
 import {
   classifyMcpClientAutoConfigRegistration,
@@ -430,7 +431,7 @@ test("Gecko runner drains but retains only the configured byte cap", async () =>
               async call() {
                 return {
                   stdin: { async close() {} },
-                  stdout: createPipe(["12345", "67890", "drained"]),
+                  stdout: createPipe(["12345", "67890", "drained"], true),
                   stderr: createPipe(["error"]),
                   async wait() {
                     return { exitCode: 0 };
@@ -460,6 +461,67 @@ test("Gecko runner drains but retains only the configured byte cap", async () =>
     assert.equal(result.stdoutTruncated, true);
     assert.equal(result.stderr, "error");
     assert.equal(result.stderrTruncated, false);
+  } finally {
+    if (originalChromeUtils === undefined) {
+      delete globalThis.ChromeUtils;
+    } else {
+      globalThis.ChromeUtils = originalChromeUtils;
+    }
+    restorePathUtils();
+  }
+});
+
+test("Gecko runner rejects tagged objects without ArrayBuffer internal slots", async () => {
+  const originalChromeUtils = globalThis.ChromeUtils;
+  const restorePathUtils = installFakePathUtils();
+  try {
+    globalThis.ChromeUtils = {
+      importESModule(uri) {
+        if (uri.endsWith("Subprocess.sys.mjs")) {
+          return {
+            Subprocess: {
+              getEnvironment() {
+                return { PATH: "/usr/bin:/bin" };
+              },
+              async call() {
+                return {
+                  stdin: { async close() {} },
+                  stdout: {
+                    async read() {
+                      return {
+                        [Symbol.toStringTag]: "ArrayBuffer",
+                        byteLength: 0,
+                      };
+                    },
+                  },
+                  stderr: createPipe([]),
+                  async wait() {
+                    return { exitCode: 0 };
+                  },
+                  async kill() {},
+                };
+              },
+            },
+          };
+        }
+        return {
+          setTimeout() {
+            return 37;
+          },
+          clearTimeout() {},
+        };
+      },
+    };
+
+    await assert.rejects(
+      createGeckoMcpClientProcessRunner().run({
+        executable: PLAN.executable,
+        argv: PLAN.argv,
+        timeoutMs: 1_000,
+        maxOutputBytes: 32,
+      }),
+      /MCP client process failed/u,
+    );
   } finally {
     if (originalChromeUtils === undefined) {
       delete globalThis.ChromeUtils;
@@ -540,10 +602,20 @@ function installFakePathUtils() {
   };
 }
 
-function createPipe(chunks) {
+function createPipe(chunks, foreignRealm = false) {
   const encoder = new globalThis.TextEncoder();
-  const pending = chunks.map((chunk) => encoder.encode(chunk).buffer);
-  pending.push(new ArrayBuffer(0));
+  const context = foreignRealm ? vm.createContext({}) : null;
+  const createBuffer = (chunk) => {
+    const bytes = [...encoder.encode(chunk)];
+    return context
+      ? vm.runInContext(
+          `new Uint8Array(${JSON.stringify(bytes)}).buffer`,
+          context,
+        )
+      : new Uint8Array(bytes).buffer;
+  };
+  const pending = chunks.map(createBuffer);
+  pending.push(createBuffer(""));
   return {
     async read() {
       return pending.shift();
