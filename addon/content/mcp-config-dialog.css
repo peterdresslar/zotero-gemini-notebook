@@ -94,8 +94,7 @@
 .mcp-enable-row small,
 .mcp-field-help,
 .mcp-defaults-row span,
-.mcp-recovery-row small,
-.mcp-notice span {
+.mcp-recovery-row small {
   font-size: 12px;
   line-height: 1.4;
   opacity: 0.72;
@@ -368,16 +367,6 @@
 
 .mcp-recovery-row button {
   flex-shrink: 0;
-}
-
-.mcp-notice {
-  display: flex;
-  flex-direction: column;
-  margin: 0 10px 10px;
-  padding: 7px 11px;
-  border-left: 3px solid ThreeDShadow;
-  color: FieldText;
-  font-size: 12px;
 }
 
 #mcp-config-bottom-bar {

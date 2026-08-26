@@ -275,19 +275,6 @@ type="text/css"?>
       </html:div>
     </html:section>
 
-    <html:aside class="mcp-notice" role="note">
-      <html:strong
-        >Auto-configure runs only when you press its button.</html:strong
-      >
-      It installs or validates the adapter source bundled with Zotero and
-      invokes the selected client's own command-line tool. It does not install
-      the MCP client, Python, or uv; use a shell; or start the MCP server.
-      During its bounded import preflight, uv may download pinned dependencies
-      into an isolated environment but will not download Python. The beta
-      adapter stages sources for the existing Chrome handoff; it does not create
-      notebooks or upload sources by itself.
-    </html:aside>
-
     <hbox id="mcp-config-bottom-bar" align="center">
       <spacer flex="1" />
       <button id="mcp-save-btn" label="Save" />

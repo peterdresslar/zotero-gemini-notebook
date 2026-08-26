@@ -389,14 +389,16 @@ async function requestAutoConfigure(state: DialogState): Promise<void> {
   if (!isGuidedClient(settings.clientPreset)) return;
 
   const clientLabel = getClientLabel(settings.clientPreset);
-  const confirmed = state.win.confirm(
+  const confirmed = Services.prompt.confirm(
+    state.win as unknown as mozIDOMWindowProxy,
+    "Zotero Connector: Auto-configure MCP",
     `Auto-configure ${clientLabel}? Zotero will install or validate its bundled local adapter, use ${clientLabel}'s own command-line tool to add or replace only the MCP server named ${MCP_SERVER_NAME}, and enable Zotero's authenticated local MCP access if setup succeeds. ${clientLabel} and uv must already be installed. Continue?`,
   );
   if (!confirmed) return;
 
   state.autoConfigureInProgress = true;
   state.autoConfigureStatusKind = "running";
-  state.autoConfigureMessage = `Installing the local adapter and asking ${clientLabel} to register it…`;
+  state.autoConfigureMessage = `Preparing the local adapter. ${clientLabel} will be updated only after this succeeds.`;
   state.elements.save.setAttribute("disabled", "true");
   state.elements.cancel.setAttribute("disabled", "true");
   updateDialogState(state);

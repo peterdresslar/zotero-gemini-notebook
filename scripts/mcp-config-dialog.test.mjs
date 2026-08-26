@@ -56,10 +56,6 @@ test("labels the v0.4.0 MCP staging surface as beta", () => {
     xhtml,
     /read-only\s+status tool, authenticated staging, and read-only job status/,
   );
-  assert.match(
-    xhtml,
-    /does not create\s+notebooks or upload sources by itself/,
-  );
   assert.match(xhtml, /Enable MCP support \(Beta\)/);
   assert.match(dialogModule, /ensureMcpLocalAuthorization\(\)/);
   assert.match(dialogModule, /Persist opt-out first, then opt-in last/);
@@ -76,13 +72,9 @@ test("runs guided Auto-configure only from the explicit confirmed action", () =>
   );
   assert.match(xhtml, /uv must already be installed/);
   assert.match(xhtml, /adapter bundled in this XPI/);
-  assert.match(xhtml, /only when you press its button/);
+  assert.match(xhtml, /Nothing changes until you press Auto-configure/);
   assert.match(xhtml, /adds or replaces\s+only the client registration named/);
   assert.match(xhtml, /zotero-gemini-notebook/);
-  assert.match(xhtml, /does not install\s+the MCP client, Python, or uv/);
-  assert.match(xhtml, /does not[\s\S]*use a shell/);
-  assert.match(xhtml, /uv may download pinned dependencies/);
-  assert.match(xhtml, /will not download Python/);
   assert.ok(
     xhtml.indexOf('id="mcp-auto-configure-panel"') <
       xhtml.indexOf('id="mcp-advanced-settings"'),
@@ -96,10 +88,17 @@ test("runs guided Auto-configure only from the explicit confirmed action", () =>
   assert.match(dialogModule, /Custom clients use manual configuration/);
   assert.match(dialogModule, /void requestAutoConfigure\(state\)/);
   assert.match(dialogModule, /await autoConfigureMcpClient\(/);
-  assert.match(dialogModule, /state\.win\.confirm\(/);
+  assert.match(
+    dialogModule,
+    /Services\.prompt\.confirm\(\s*state\.win as unknown as mozIDOMWindowProxy,\s*"Zotero Connector: Auto-configure MCP"/,
+  );
   assert.match(dialogModule, /replaceExisting: true/);
   assert.match(dialogModule, /add or replace only the MCP server named/);
   assert.match(dialogModule, /enable Zotero's authenticated local MCP access/);
+  assert.match(
+    dialogModule,
+    /Preparing the local adapter\. \$\{clientLabel\} will be updated only after this succeeds\./,
+  );
   assert.doesNotMatch(
     dialogModule,
     /autoConfigureMcpClient\(\{[\s\S]{0,300}adapterPath:/,
@@ -118,6 +117,15 @@ test("runs guided Auto-configure only from the explicit confirmed action", () =>
   assert.doesNotMatch(
     dialogModule,
     /nsIProcess|Subprocess|execFile|spawn\(|writeUTF8|writeAtomic|openExternal/,
+  );
+});
+
+test("omits the verbose trailing MCP notice", () => {
+  assert.doesNotMatch(xhtml, /mcp-notice/);
+  assert.doesNotMatch(css, /\.mcp-notice/);
+  assert.ok(
+    xhtml.indexOf('id="mcp-config-settings"') <
+      xhtml.indexOf('id="mcp-config-bottom-bar"'),
   );
 });
 
