@@ -1,4 +1,9 @@
 export const STAGED_CLEAR_METHOD = "POST";
+export const LEGACY_STAGED_CLEAR_METHOD = "DELETE";
+
+export function shouldUseLegacyPopupClear(jobId) {
+  return jobId === null;
+}
 
 export function createStagedFileRequest(attachmentId, jobId) {
   assertAttachmentId(attachmentId);
@@ -36,11 +41,13 @@ export async function clearStagedJob({
     throw new TypeError("A fetch implementation is required");
   }
   const request = createStagedClearRequest(jobId, attachmentIds);
-  const response = await fetchImpl(url, {
-    method: STAGED_CLEAR_METHOD,
+  const legacyRequest = shouldUseLegacyPopupClear(jobId);
+  const options = {
+    method: legacyRequest ? LEGACY_STAGED_CLEAR_METHOD : STAGED_CLEAR_METHOD,
     headers,
-    body: JSON.stringify(request ?? {}),
-  });
+  };
+  if (!legacyRequest) options.body = JSON.stringify(request);
+  const response = await fetchImpl(url, options);
   if (!response?.ok) {
     throw new Error("Zotero could not finalize the staged job");
   }

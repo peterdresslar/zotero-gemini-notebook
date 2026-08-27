@@ -3,6 +3,8 @@
 /* eslint-disable */
 // @ts-nocheck
 export type FluentMessageId =
+  | 'menu-connector-label'
+  | 'menuitem-configure-mcp-label'
   | 'menuitem-export-label'
   | 'menuitem-export-selected-label'
   | 'startup-begin'

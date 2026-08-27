@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zotero to Gemini Notebook",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Import staged Zotero sources into Gemini Notebook",
   "permissions": ["activeTab"],
   "host_permissions": [
@@ -17,6 +17,10 @@
       "128": "icons/icon128.png"
     }
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -25,6 +29,9 @@
       ],
       "js": [
         "upload-transfer.js",
+        "destination.js",
+        "injector-attempt.js",
+        "upload-handoff.js",
         "dialog-upload-status.js",
         "gemini-controls.js",
         "content.js"
@@ -36,7 +43,7 @@
         "https://notebook.google.com/*",
         "https://notebooklm.google.com/*"
       ],
-      "js": ["injector.js"],
+      "js": ["injector-attempt.js", "injector.js"],
       "run_at": "document_start",
       "world": "MAIN"
     }

@@ -1,13 +1,27 @@
 import { bridgeJobStore } from "./bridgeJobStore.js";
 import { normalizeCreateBridgeJobInput } from "./bridgeJobInput.js";
-import { toStagedItem } from "./items";
-import type { CreateBridgeJobInput, StagedItem } from "../types";
+import {
+  BridgeJobCreationError,
+  MAX_AGENT_CANDIDATE_ITEMS,
+  MAX_AGENT_COLLECTIONS_SCANNED,
+  getAgentJobExpiresAt,
+  prepareAgentStagedItems,
+} from "./bridgeJobPolicy.js";
+import { toSizedStagedItem } from "./items";
+import type { CreateBridgeJobInput } from "../types";
 import type { BridgeJobJson, BridgeJobSnapshot } from "./bridgeJobStore.js";
+import type { ChromeJobEvent } from "./chromeJobEventProtocol.js";
+import {
+  ChromeJobEventConflictError,
+  reportChromeJobEventToStore,
+} from "./chromeJobEventState.js";
 
 interface ResolvedItems {
   items: Zotero.Item[];
   skippedCount: number;
 }
+
+export { ChromeJobEventConflictError } from "./chromeJobEventState.js";
 
 export async function createJob(
   input: CreateBridgeJobInput,
@@ -44,22 +58,29 @@ export async function createJob(
     const existing = bridgeJobStore.getIdempotentJob(requestId, {
       origin: "agent",
       source,
-      destination: "new",
+      destination: request.destination,
     });
     if (existing) return existing;
   }
 
   if (!Zotero.Libraries.exists(request.libraryID)) {
-    throw new Error("The requested Zotero library was not found.");
+    throw new BridgeJobCreationError(
+      "LIBRARY_NOT_FOUND",
+      "The requested Zotero library was not found.",
+    );
   }
 
   const resolved = await resolveItems();
-  const stagedItems = await toStagedItems(resolved.items);
-  const skippedCount =
-    resolved.skippedCount + resolved.items.length - stagedItems.length;
+  const prepared = await prepareAgentStagedItems(
+    resolved.items,
+    toSizedStagedItem,
+  );
+  const stagedItems = [...prepared.stagedItems];
+  const skippedCount = resolved.skippedCount + prepared.skippedCount;
 
   if (stagedItems.length === 0) {
-    throw new Error(
+    throw new BridgeJobCreationError(
+      "NO_SUPPORTED_ATTACHMENTS",
       "No supported local attachments were found for the requested Zotero items.",
     );
   }
@@ -68,10 +89,11 @@ export async function createJob(
     items: stagedItems,
     origin: "agent",
     source,
-    destination: "new",
+    destination: request.destination,
     skippedCount,
     requestId,
     replaceExisting: request.replace,
+    expiresAt: getAgentJobExpiresAt(),
   });
 }
 
@@ -89,6 +111,14 @@ export function cancelJob(jobId: string): BridgeJobSnapshot {
   return bridgeJobStore.cancel(jobId);
 }
 
+export function reportChromeJobEvent(
+  jobId: string,
+  claimId: string,
+  event: ChromeJobEvent,
+): BridgeJobSnapshot {
+  return reportChromeJobEventToStore(bridgeJobStore, jobId, claimId, event);
+}
+
 export const bridgeApi = Object.freeze({
   createJob,
   getJob,
@@ -100,6 +130,13 @@ async function resolveItemKeys(
   libraryID: number,
   itemKeys: string[],
 ): Promise<ResolvedItems> {
+  if (itemKeys.length > MAX_AGENT_CANDIDATE_ITEMS) {
+    throw new BridgeJobCreationError(
+      "SOURCE_LIMIT_EXCEEDED",
+      "The requested Zotero item selection exceeds the candidate limit.",
+    );
+  }
+
   const items: Zotero.Item[] = [];
   let skippedCount = 0;
 
@@ -125,7 +162,10 @@ async function resolveCollection(
     collectionKey,
   );
   if (!root || root.deleted) {
-    throw new Error("The requested Zotero collection was not found.");
+    throw new BridgeJobCreationError(
+      "COLLECTION_NOT_FOUND",
+      "The requested Zotero collection was not found.",
+    );
   }
 
   const collections = [root];
@@ -135,10 +175,25 @@ async function resolveCollection(
   while (collections.length > 0) {
     const collection = collections.shift()!;
     if (seenCollectionIds.has(collection.id)) continue;
+    if (seenCollectionIds.size >= MAX_AGENT_COLLECTIONS_SCANNED) {
+      throw new BridgeJobCreationError(
+        "SOURCE_LIMIT_EXCEEDED",
+        "The requested Zotero collection tree exceeds the scan limit.",
+      );
+    }
     seenCollectionIds.add(collection.id);
 
     for (const item of collection.getChildItems()) {
       if (item.isRegularItem() && !item.deleted) {
+        if (
+          !itemsById.has(item.id) &&
+          itemsById.size >= MAX_AGENT_CANDIDATE_ITEMS
+        ) {
+          throw new BridgeJobCreationError(
+            "SOURCE_LIMIT_EXCEEDED",
+            "The requested Zotero collection exceeds the candidate limit.",
+          );
+        }
         itemsById.set(item.id, item);
       }
     }
@@ -154,15 +209,6 @@ async function resolveCollection(
     a.key.localeCompare(b.key),
   );
   return { items, skippedCount: 0 };
-}
-
-async function toStagedItems(items: Zotero.Item[]): Promise<StagedItem[]> {
-  const stagedItems: StagedItem[] = [];
-  for (const item of items) {
-    const stagedItem = await toStagedItem(item);
-    if (stagedItem) stagedItems.push(stagedItem);
-  }
-  return stagedItems;
 }
 
 function assertNonemptyString(

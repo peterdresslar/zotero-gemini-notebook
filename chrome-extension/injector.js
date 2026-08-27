@@ -6,28 +6,14 @@
 (() => {
   console.log("[Zotero injector] Main-world script loaded");
 
+  const attemptApi = globalThis.ZoteroInjectorAttempt;
+  const attemptController = attemptApi.createController({
+    getCurrentUrl: () => window.location.href,
+  });
   let pendingFiles = null;
   let interceptedInput = null;
   let fileInputObserver = null;
   let fallbackTimer = null;
-  const recordedListeners = new WeakMap();
-
-  const originalAddEventListener = EventTarget.prototype.addEventListener;
-  const originalRemoveEventListener = EventTarget.prototype.removeEventListener;
-
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    recordEventListener(this, type, listener, options);
-    return originalAddEventListener.call(this, type, listener, options);
-  };
-
-  EventTarget.prototype.removeEventListener = function (
-    type,
-    listener,
-    options,
-  ) {
-    forgetEventListener(this, type, listener);
-    return originalRemoveEventListener.call(this, type, listener, options);
-  };
 
   // --- Phase 1: Patch HTMLInputElement.prototype.click ---
   // The Angular directive (xapscottyuploadertrigger) creates a hidden
@@ -38,9 +24,13 @@
 
   HTMLInputElement.prototype.click = function () {
     if (this.type === "file" && pendingFiles) {
+      const current = requireCurrentAttempt(
+        attemptController.getBinding()?.attemptNonce,
+      );
+      if (!current) return;
       console.log("[Zotero injector] Intercepted file-input .click()");
       interceptedInput = this;
-      doInject();
+      doInject(current.attemptNonce);
       return; // swallow — no native picker
     }
     return originalClick.apply(this, arguments);
@@ -50,9 +40,13 @@
   if (typeof originalShowPicker === "function") {
     HTMLInputElement.prototype.showPicker = function () {
       if (this.type === "file" && pendingFiles) {
+        const current = requireCurrentAttempt(
+          attemptController.getBinding()?.attemptNonce,
+        );
+        if (!current) return;
         console.log("[Zotero injector] Intercepted file-input .showPicker()");
         interceptedInput = this;
-        doInject();
+        doInject(current.attemptNonce);
         return;
       }
       return originalShowPicker.apply(this, arguments);
@@ -67,23 +61,25 @@
   if (originalShowOpenFilePicker) {
     window.showOpenFilePicker = async function () {
       if (pendingFiles) {
+        const current = requireCurrentAttempt(
+          attemptController.getBinding()?.attemptNonce,
+        );
+        if (!current) {
+          throw new Error(attemptApi.ATTEMPT_MISMATCH_ERROR);
+        }
         console.log(
           "[Zotero injector] Intercepted window.showOpenFilePicker()",
         );
         try {
           const handles = pendingFiles.map(createFileHandle);
-          stopWatchingForFileInputs();
-          pendingFiles = null;
-          interceptedInput = null;
-          reply(true);
+          clearPendingAttempt();
+          reply(true, null, current.attemptNonce);
           return handles;
-        } catch (err) {
-          console.error("[Zotero injector] Error creating file handles:", err);
-          stopWatchingForFileInputs();
-          pendingFiles = null;
-          interceptedInput = null;
-          reply(false, err.message);
-          throw err;
+        } catch {
+          console.error("[Zotero injector] Could not create file handles");
+          clearPendingAttempt();
+          reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
+          throw new Error(attemptApi.INJECTOR_FAILURE_ERROR);
         }
       }
 
@@ -97,23 +93,50 @@
     if (e.source !== window) return;
     if (!e.data || e.data.type !== "__zotero_to_injector") return;
 
-    const { command, files, reason, selector } = e.data;
+    const { attemptNonce, command, files, notebookPathname, reason } = e.data;
 
     if (command === "arm") {
+      if (!Array.isArray(files) || files.length === 0) {
+        postStatus(
+          "armed",
+          { success: false, error: attemptApi.INJECTOR_FAILURE_ERROR },
+          attemptApi.readAttemptNonce(attemptNonce),
+        );
+        return;
+      }
+      const binding = attemptController.arm({
+        attemptNonce,
+        notebookPathname,
+      });
+      if (!binding) {
+        postStatus(
+          "armed",
+          { success: false, error: attemptApi.ATTEMPT_MISMATCH_ERROR },
+          attemptApi.readAttemptNonce(attemptNonce),
+        );
+        return;
+      }
       pendingFiles = files;
       interceptedInput = null;
-      watchForFileInputs();
+      watchForFileInputs(binding.attemptNonce);
       console.log(
         "[Zotero injector] Armed with " + (files ? files.length : 0) + " files",
       );
-      window.postMessage(
-        { type: "__zotero_from_injector", status: "armed" },
-        "*",
-      );
+      postStatus("armed", { success: true }, binding.attemptNonce);
+      return;
+    }
+
+    if (command === "disarm") {
+      if (attemptController.matches(attemptNonce)) {
+        clearPendingAttempt();
+        postStatus("disarmed", { success: true }, attemptNonce);
+      }
       return;
     }
 
     if (command === "inject-existing") {
+      const current = requireCurrentAttempt(attemptNonce);
+      if (!current) return;
       const input = findCandidateFileInput();
       const found = Boolean(input && pendingFiles);
       console.log(
@@ -122,74 +145,30 @@
           "): " +
           (found ? "found file input" : "no file input found"),
       );
-      window.postMessage(
-        {
-          type: "__zotero_from_injector",
-          status: "inject-existing",
-          found,
-          reason: reason || null,
-        },
-        "*",
+      postStatus(
+        "inject-existing",
+        { found, reason: reason || null },
+        current.attemptNonce,
       );
       if (found) {
         interceptedInput = input;
-        doInject();
+        doInject(current.attemptNonce);
       }
       return;
     }
 
     if (command === "drop-files") {
-      const target = findCandidateDropTarget();
-      const found = Boolean(target && pendingFiles);
-      console.log(
-        "[Zotero injector] Drop probe (" +
-          (reason || "unknown") +
-          "): " +
-          (found ? describeElement(target) : "no drop target found"),
-      );
-      window.postMessage(
+      const current = requireCurrentAttempt(attemptNonce);
+      if (!current) return;
+      console.log("[Zotero injector] Synthetic drop is disabled");
+      postStatus(
+        "drop-files",
         {
-          type: "__zotero_from_injector",
-          status: "drop-files",
-          found,
+          found: false,
+          dispatched: false,
           reason: reason || null,
-          target: target ? describeElement(target) : null,
         },
-        "*",
-      );
-      if (found) {
-        doDrop(target);
-      }
-      return;
-    }
-
-    if (command === "activate-trigger") {
-      const trigger = selector
-        ? findElementBySelector(selector) || findCandidateUploadTrigger()
-        : findCandidateUploadTrigger();
-      const found = Boolean(trigger && pendingFiles);
-      let invoked = 0;
-      if (found) {
-        invoked = activateUploadTrigger(trigger);
-      }
-      console.log(
-        "[Zotero injector] Upload trigger activation (" +
-          (reason || "unknown") +
-          "): " +
-          (found ? describeElement(trigger) : "no trigger found") +
-          ", listeners=" +
-          invoked,
-      );
-      window.postMessage(
-        {
-          type: "__zotero_from_injector",
-          status: "activate-trigger",
-          found,
-          reason: reason || null,
-          target: trigger ? describeElement(trigger) : null,
-          listeners: invoked,
-        },
-        "*",
+        current.attemptNonce,
       );
       return;
     }
@@ -197,25 +176,23 @@
 
   // --- Phase 3: Inject files into the captured input ---
 
-  function doInject() {
+  function doInject(attemptNonce) {
+    const current = requireCurrentAttempt(attemptNonce);
+    if (!current) return;
     const input = interceptedInput;
     const files = pendingFiles;
 
     if (!input || !files || files.length === 0) {
-      stopWatchingForFileInputs();
-      pendingFiles = null;
-      interceptedInput = null;
+      clearPendingAttempt();
       console.error(
         "[Zotero injector] doInject called but missing input or files",
       );
-      reply(false, "Missing file input or file data");
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
       return;
     }
 
     // Reset state so we don't re-intercept on future clicks
-    stopWatchingForFileInputs();
-    pendingFiles = null;
-    interceptedInput = null;
+    clearPendingAttempt();
 
     try {
       const dt = createDataTransfer(files);
@@ -226,67 +203,60 @@
       input.dispatchEvent(new Event("change", { bubbles: true }));
 
       console.log("[Zotero injector] Injected " + dt.files.length + " file(s)");
-      reply(true);
-    } catch (err) {
-      console.error("[Zotero injector] Error:", err);
-      reply(false, err.message);
+      reply(true, null, current.attemptNonce);
+    } catch {
+      console.error("[Zotero injector] File injection failed");
+      reply(false, attemptApi.INJECTOR_FAILURE_ERROR, current.attemptNonce);
     }
   }
 
-  function doDrop(target) {
-    const files = pendingFiles;
-
-    if (!target || !files || files.length === 0) {
-      console.error(
-        "[Zotero injector] doDrop called but missing target or files",
-      );
-      return;
-    }
-
-    try {
-      const dt = createDataTransfer(files);
-      const invoked =
-        dispatchDragEvent(target, "dragenter", dt) +
-        dispatchDragEvent(target, "dragover", dt) +
-        dispatchDragEvent(target, "drop", dt);
-
-      console.log(
-        "[Zotero injector] Dropped " +
-          dt.files.length +
-          " file(s) on " +
-          describeElement(target) +
-          ", listeners=" +
-          invoked,
-      );
-    } catch (err) {
-      console.error("[Zotero injector] Drop error:", err);
-    }
+  function clearPendingAttempt() {
+    stopWatchingForFileInputs();
+    pendingFiles = null;
+    interceptedInput = null;
+    attemptController.clear();
   }
 
-  function activateUploadTrigger(target) {
-    let invoked = 0;
-    invoked += dispatchTrustedMouseEvent(target, "pointerdown");
-    invoked += dispatchTrustedMouseEvent(target, "mousedown");
-    invoked += dispatchTrustedMouseEvent(target, "pointerup");
-    invoked += dispatchTrustedMouseEvent(target, "mouseup");
-    invoked += dispatchTrustedMouseEvent(target, "click");
-    return invoked;
+  function requireCurrentAttempt(attemptNonce) {
+    const checked = attemptController.check(attemptNonce);
+    if (checked.ok) return checked;
+    if (checked.currentAttempt) clearPendingAttempt();
+    reply(false, attemptApi.ATTEMPT_MISMATCH_ERROR, checked.attemptNonce);
+    return null;
   }
 
-  function reply(success, error) {
+  function postStatus(status, fields, attemptNonce) {
     window.postMessage(
-      { type: "__zotero_from_injector", success, error: error || null },
+      {
+        type: "__zotero_from_injector",
+        status,
+        attemptNonce: attemptNonce ?? null,
+        ...fields,
+      },
       "*",
     );
   }
 
-  function watchForFileInputs() {
+  function reply(success, error, attemptNonce) {
+    window.postMessage(
+      {
+        type: "__zotero_from_injector",
+        attemptNonce: attemptNonce ?? null,
+        success,
+        error: error || null,
+      },
+      "*",
+    );
+  }
+
+  function watchForFileInputs(attemptNonce) {
     stopWatchingForFileInputs();
 
     if (!document.documentElement) return;
 
     fileInputObserver = new MutationObserver((records) => {
       if (!pendingFiles || interceptedInput) return;
+      if (!requireCurrentAttempt(attemptNonce)) return;
 
       for (const record of records) {
         for (const node of record.addedNodes) {
@@ -299,7 +269,7 @@
               console.log(
                 "[Zotero injector] Injecting into observed file input",
               );
-              doInject();
+              doInject(attemptNonce);
             }
           });
           return;
@@ -323,6 +293,7 @@
         stopWatchingForFileInputs();
         return;
       }
+      if (!requireCurrentAttempt(attemptNonce)) return;
 
       const input = findCandidateFileInput();
       if (!input) {
@@ -344,7 +315,7 @@
           "ms",
       );
       interceptedInput = input;
-      doInject();
+      doInject(attemptNonce);
     }, 500);
   }
 
@@ -369,35 +340,6 @@
   function findCandidateFileInput() {
     const inputs = collectFileInputs(document);
     return inputs.length ? inputs[inputs.length - 1] : null;
-  }
-
-  function findCandidateDropTarget() {
-    const candidates = collectDropTargets(document)
-      .filter(isVisible)
-      .sort((a, b) => scoreDropTarget(b) - scoreDropTarget(a));
-    return candidates[0] || null;
-  }
-
-  function findCandidateUploadTrigger() {
-    const candidates = querySelectorAllDeep(
-      document,
-      '[xapscottyuploadertrigger], button, [role="button"]',
-    )
-      .filter(isVisible)
-      .filter((el) => {
-        if (el.hasAttribute("xapscottyuploadertrigger")) return true;
-        const text = normalizeText(
-          (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-        );
-        return text.includes("upload files") || text.includes("upload file");
-      })
-      .sort((a, b) => scoreUploadTrigger(b) - scoreUploadTrigger(a));
-
-    return candidates[0] || null;
-  }
-
-  function findElementBySelector(selector) {
-    return querySelectorAllDeep(document, selector)[0] || null;
   }
 
   function collectFileInputs(root) {
@@ -425,126 +367,6 @@
     }
 
     return results;
-  }
-
-  function collectDropTargets(root) {
-    const results = [];
-    const visitedShadowRoots = new Set();
-    const stack = [root];
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || typeof current.querySelectorAll !== "function") continue;
-
-      results.push(
-        ...current.querySelectorAll(
-          "[xapscottyuploaderdropzone], .xap-uploader-dropzone, .sources-list-dropzone",
-        ),
-      );
-
-      for (const el of current.querySelectorAll("*")) {
-        if (matchesDropTargetText(el)) {
-          results.push(el);
-        }
-
-        if (el.shadowRoot && !visitedShadowRoots.has(el.shadowRoot)) {
-          visitedShadowRoots.add(el.shadowRoot);
-          stack.push(el.shadowRoot);
-        }
-      }
-    }
-
-    const dialog =
-      document.querySelector("add-sources-dialog") ||
-      document.querySelector('[role="dialog"]');
-    if (dialog) {
-      results.push(dialog);
-    }
-
-    return Array.from(new Set(results));
-  }
-
-  function querySelectorAllDeep(root, selector) {
-    const results = [];
-    const visitedShadowRoots = new Set();
-    const stack = [root];
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || typeof current.querySelectorAll !== "function") continue;
-
-      results.push(...current.querySelectorAll(selector));
-
-      for (const el of current.querySelectorAll("*")) {
-        if (el.shadowRoot && !visitedShadowRoots.has(el.shadowRoot)) {
-          visitedShadowRoots.add(el.shadowRoot);
-          stack.push(el.shadowRoot);
-        }
-      }
-    }
-
-    return results;
-  }
-
-  function matchesDropTargetText(el) {
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    return (
-      text.includes("upload files") ||
-      text.includes("upload file") ||
-      text.includes("drag and drop") ||
-      text.includes("drop files") ||
-      text.includes("drop file") ||
-      text.includes("browse files") ||
-      text.includes("browse file")
-    );
-  }
-
-  function scoreDropTarget(el) {
-    const tag = el.tagName.toLowerCase();
-    const role = normalizeText(el.getAttribute("role") || "");
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    let score = 0;
-
-    if (el.hasAttribute("xapscottyuploaderdropzone")) score += 100;
-    if (el.classList.contains("sources-list-dropzone")) score += 80;
-    if (el.classList.contains("xap-uploader-dropzone")) score += 80;
-    if (text.includes("upload files")) score += 40;
-    if (
-      text.includes("drag and drop") ||
-      text.includes("drop files") ||
-      text.includes("drop file")
-    ) {
-      score += 30;
-    }
-    if (text.includes("browse files") || text.includes("browse file")) {
-      score += 20;
-    }
-    if (role === "button") score += 10;
-    if (tag === "button") score += 10;
-    if (el.closest("add-sources-dialog")) score += 10;
-    if (tag === "add-sources-dialog") score -= 20;
-
-    return score;
-  }
-
-  function scoreUploadTrigger(el) {
-    const tag = el.tagName.toLowerCase();
-    const text = normalizeText(
-      (el.getAttribute("aria-label") || "") + " " + (el.textContent || ""),
-    );
-    let score = 0;
-
-    if (el.hasAttribute("xapscottyuploadertrigger")) score += 100;
-    if (text.includes("upload files")) score += 40;
-    if (text.includes("upload file")) score += 30;
-    if (tag === "button") score += 10;
-    if (el.closest("add-sources-dialog")) score += 20;
-
-    return score;
   }
 
   function createFileHandle(fileData) {
@@ -585,183 +407,5 @@
       dt.items.add(decodeFile(f));
     }
     return dt;
-  }
-
-  function dispatchDragEvent(target, type, dataTransfer) {
-    let event;
-    try {
-      event = new DragEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        dataTransfer,
-      });
-    } catch {
-      event = new Event(type, {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-      });
-    }
-
-    if (!event.dataTransfer) {
-      Object.defineProperty(event, "dataTransfer", {
-        value: dataTransfer,
-      });
-    }
-
-    target.dispatchEvent(event);
-    return invokeRecordedListeners(target, type, (currentTarget) =>
-      createTrustedEventProxy(event, target, currentTarget, dataTransfer),
-    );
-  }
-
-  function dispatchTrustedMouseEvent(target, type) {
-    const event = new MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      view: window,
-    });
-    target.dispatchEvent(event);
-    return invokeRecordedListeners(target, type, (currentTarget) =>
-      createTrustedEventProxy(event, target, currentTarget),
-    );
-  }
-
-  function isVisible(el) {
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") {
-      return false;
-    }
-
-    return el.getClientRects().length > 0;
-  }
-
-  function normalizeText(text) {
-    return text.toLowerCase().replace(/\s+/g, " ").trim();
-  }
-
-  function recordEventListener(target, type, listener, options) {
-    if (!listener || typeof type !== "string") return;
-
-    let byType = recordedListeners.get(target);
-    if (!byType) {
-      byType = new Map();
-      recordedListeners.set(target, byType);
-    }
-
-    let entries = byType.get(type);
-    if (!entries) {
-      entries = [];
-      byType.set(type, entries);
-    }
-
-    if (entries.some((entry) => entry.listener === listener)) return;
-    entries.push({ listener, options });
-  }
-
-  function forgetEventListener(target, type, listener) {
-    const byType = recordedListeners.get(target);
-    const entries = byType?.get(type);
-    if (!entries) return;
-
-    const index = entries.findIndex((entry) => entry.listener === listener);
-    if (index !== -1) {
-      entries.splice(index, 1);
-    }
-  }
-
-  function invokeRecordedListeners(target, type, eventFactory) {
-    const path = buildEventPath(target);
-    let invoked = 0;
-
-    for (const currentTarget of path) {
-      const entries = recordedListeners.get(currentTarget)?.get(type) || [];
-      for (const entry of entries) {
-        const event = eventFactory(currentTarget);
-        try {
-          if (typeof entry.listener === "function") {
-            entry.listener.call(currentTarget, event);
-          } else if (typeof entry.listener.handleEvent === "function") {
-            entry.listener.handleEvent.call(entry.listener, event);
-          }
-          invoked++;
-        } catch (err) {
-          console.error("[Zotero injector] Listener replay error:", err);
-        }
-      }
-
-      const propertyListener = currentTarget["on" + type];
-      if (typeof propertyListener === "function") {
-        const event = eventFactory(currentTarget);
-        try {
-          propertyListener.call(currentTarget, event);
-          invoked++;
-        } catch (err) {
-          console.error(
-            "[Zotero injector] Property listener replay error:",
-            err,
-          );
-        }
-      }
-    }
-
-    return invoked;
-  }
-
-  function buildEventPath(target) {
-    const path = [];
-    let current = target;
-    while (current) {
-      path.push(current);
-      current = current.parentNode || current.host || null;
-    }
-    path.push(window);
-    return path;
-  }
-
-  function createTrustedEventProxy(
-    event,
-    target,
-    currentTarget,
-    dataTransfer = null,
-  ) {
-    const path = buildEventPath(target);
-    return new Proxy(event, {
-      get(source, prop) {
-        if (prop === "isTrusted") return true;
-        if (prop === "target") return target;
-        if (prop === "srcElement") return target;
-        if (prop === "currentTarget") return currentTarget;
-        if (prop === "dataTransfer" && dataTransfer) return dataTransfer;
-        if (prop === "composedPath") return () => path;
-
-        const value = source[prop];
-        if (typeof value === "function") {
-          return value.bind(source);
-        }
-        return value;
-      },
-    });
-  }
-
-  function describeElement(el) {
-    const tag = el.tagName.toLowerCase();
-    const id = el.id ? "#" + el.id : "";
-    const classes =
-      typeof el.className === "string" && el.className
-        ? "." + el.className.trim().replace(/\s+/g, ".")
-        : "";
-    const role = el.getAttribute("role")
-      ? '[role="' + el.getAttribute("role") + '"]'
-      : "";
-    const label = el.getAttribute("aria-label")
-      ? '[aria-label="' + el.getAttribute("aria-label") + '"]'
-      : "";
-    const text = normalizeText(el.textContent || "").slice(0, 80);
-    return (
-      tag + id + classes + role + label + (text ? ' text="' + text + '"' : "")
-    );
   }
 })();

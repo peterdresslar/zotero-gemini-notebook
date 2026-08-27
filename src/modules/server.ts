@@ -4,15 +4,22 @@ import {
   getStagedCount,
   getStagedTimestamp,
   getCurrentStagedJob,
+  getStagedAttachmentAccess,
   isReady,
-  isStagedAttachment,
   claimStagedJob,
 } from "./staging";
-import { readFileAsBase64 } from "../utils/file";
+import {
+  FileReadPolicyError,
+  assertStagedFileReadPolicy,
+  readFileAsBase64,
+} from "../utils/file";
 import { getSafeFileName } from "../utils/fileName.js";
+import { getPref } from "../utils/prefs";
 import { SUPPORTED_CONTENT_TYPES } from "../utils/attachment";
 import {
+  createStatusResponse,
   PRIVATE_RESPONSE_OPTIONS,
+  readPendingDestination,
   ZOTERO_MUTATION_METHOD,
 } from "./zoteroServerContract.js";
 import type { StatusResponse, PendingResponse, FileResponse } from "../types";
@@ -73,12 +80,13 @@ export function registerEndpoints() {
     supportedMethods: ["GET", "OPTIONS"],
     supportedDataTypes: ["application/json"],
     init: function (_data: any, sendResponseCallback: Function) {
-      const response: StatusResponse = {
+      const response: StatusResponse = createStatusResponse({
         ready: isReady(),
         count: getStagedCount(),
         zoteroVersion: Zotero.version,
         pluginVersion: config.addonName + " " + version,
-      };
+        mcpOptedIn: getPref("mcp.enabled") === true,
+      });
       sendJSON(sendResponseCallback, 200, response);
     },
   };
@@ -97,6 +105,7 @@ export function registerEndpoints() {
         timestamp: getStagedTimestamp(),
         compatibleChromeExtensionVersions: companionCompatibility.validVersions,
         jobId: activeJob?.jobId ?? null,
+        destination: readPendingDestination(activeJob),
       };
       sendJSON(sendResponseCallback, 200, response);
     },
@@ -132,7 +141,8 @@ export function registerEndpoints() {
 
       try {
         // Security: only serve files that are currently staged
-        if (!isStagedAttachment(attachmentId, jobId)) {
+        const access = getStagedAttachmentAccess(attachmentId, jobId);
+        if (!access) {
           sendJSON(sendResponseCallback, 403, {
             error: "Attachment is not staged for export",
           });
@@ -163,14 +173,23 @@ export function registerEndpoints() {
           return;
         }
 
-        const base64Data = await readFileAsBase64(filePath);
+        const maxByteSize = access.maxByteSize ?? undefined;
+        const fileInfo = await IOUtils.stat(filePath);
+        assertStagedFileReadPolicy(fileInfo, maxByteSize);
+        const base64Data = await readFileAsBase64(filePath, maxByteSize);
         const response: FileResponse = {
           data: base64Data,
           contentType,
           fileName: getSafeFileName(attachment.attachmentFilename, filePath),
         };
         sendJSON(sendResponseCallback, 200, response);
-      } catch {
+      } catch (error) {
+        if (error instanceof FileReadPolicyError) {
+          sendJSON(sendResponseCallback, 409, {
+            error: "The staged attachment changed; stage it again",
+          });
+          return;
+        }
         sendJSON(sendResponseCallback, 500, {
           error: "Unable to read the staged attachment",
         });
@@ -178,11 +197,11 @@ export function registerEndpoints() {
     },
   };
 
-  // Clear staged items (called by Chrome extension after successful upload)
+  // Legacy claim endpoint retained for older Chrome companions.
   const clearEndpoint = (Zotero.Server.Endpoints["/notebooklm/clear"] =
     function () {});
   clearEndpoint.prototype = {
-    supportedMethods: [ZOTERO_MUTATION_METHOD, "OPTIONS"],
+    supportedMethods: [ZOTERO_MUTATION_METHOD, "DELETE", "OPTIONS"],
     supportedDataTypes: ["application/json"],
     init: function (data: any, sendResponseCallback: Function) {
       try {
@@ -197,9 +216,9 @@ export function registerEndpoints() {
           return;
         }
 
-        // Legacy Chrome companions omit jobId. Updated companions bind the
-        // claim to the batch they loaded so a stale popup cannot consume a
-        // newer staged job. Claiming does not imply Gemini accepted the files.
+        // Older companions may omit jobId. Transitional companions bind the
+        // claim to the batch they loaded. Current job-bound companions use the
+        // strict /job-claim endpoint instead.
         const claimed = claimStagedJob(jobId, attachmentIds);
         if (jobId !== undefined && !claimed) {
           sendJSON(sendResponseCallback, 409, {

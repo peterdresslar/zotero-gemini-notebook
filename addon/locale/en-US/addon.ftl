@@ -1,4 +1,6 @@
 startup-begin = Zotero Gemini Notebook is loading
 startup-finish = Zotero Gemini Notebook is ready
+menu-connector-label = Gemini Notebook Connector
 menuitem-export-label = Export to Gemini Notebook...
+menuitem-configure-mcp-label = Configure MCP...
 menuitem-export-selected-label = Export Selected to Gemini Notebook

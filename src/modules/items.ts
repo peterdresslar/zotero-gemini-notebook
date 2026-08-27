@@ -1,6 +1,11 @@
 import type { ItemRow, StagedItem } from "../types";
 import { getValidAttachment } from "../utils/attachment";
 
+export interface SizedStagedItem {
+  stagedItem: StagedItem;
+  byteSize: number;
+}
+
 export async function toStagedItem(
   item: Zotero.Item,
 ): Promise<StagedItem | null> {
@@ -9,6 +14,43 @@ export async function toStagedItem(
   const attachment = await getValidAttachment(item);
   if (!attachment) return null;
 
+  return createStagedItem(item, attachment);
+}
+
+export async function toSizedStagedItem(
+  item: Zotero.Item,
+): Promise<SizedStagedItem | null> {
+  if (!item.isRegularItem()) return null;
+
+  const attachment = await getValidAttachment(item);
+  if (!attachment) return null;
+
+  try {
+    const info = await IOUtils.stat(attachment.filePath);
+    if (
+      info.type !== "regular" ||
+      !Number.isSafeInteger(info.size) ||
+      (info.size as number) < 0
+    ) {
+      return null;
+    }
+    return {
+      stagedItem: createStagedItem(item, attachment),
+      byteSize: info.size as number,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createStagedItem(
+  item: Zotero.Item,
+  attachment: {
+    attachmentId: number;
+    contentType: string;
+    fileName: string;
+  },
+): StagedItem {
   return {
     itemId: item.id,
     title: (item.getField("title") as string) || "(Untitled)",

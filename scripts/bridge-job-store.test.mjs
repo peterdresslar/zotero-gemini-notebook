@@ -182,6 +182,25 @@ test("activates one staged job and exposes defensive pending-item copies", () =>
   assert.equal(store.getPendingItems()[0].title, "Source 1");
 });
 
+test("retains private file-read bounds without exposing them in pending DTOs", () => {
+  const { store } = createHarness();
+  const bounded = { ...stagedItem(1), maxByteSize: 1234 };
+  const created = store.activate(activation({ items: [bounded] }));
+
+  assert.deepEqual(store.getAttachmentAccess(101, created.jobId), {
+    maxByteSize: 1234,
+  });
+  assert.deepEqual(store.getPendingItems(), [stagedItem(1)]);
+  assert.equal("maxByteSize" in store.getPendingItems()[0], false);
+  assert.equal(JSON.stringify(created).includes("maxByteSize"), false);
+
+  store.claimActive(created.jobId);
+  assert.deepEqual(store.getAttachmentAccess(101, created.jobId), {
+    maxByteSize: 1234,
+  });
+  assert.equal(store.getAttachmentAccess(101), null);
+});
+
 test("sanitizes every public snapshot without exposing items or file paths", () => {
   const { store } = createHarness();
   const created = store.activate(
@@ -310,6 +329,15 @@ test("returns the retained result for an idempotent request ID", () => {
     activation({ requestId: "stable-request" }),
   );
   assert.deepEqual(repeatedClaimed, claimed);
+  assert.equal(store.getActiveJob(), null);
+
+  const submitted = store.transition(first.jobId, "submitted");
+  const repeatedSubmitted = store.activate(
+    activation({ requestId: "stable-request", expiresAt: 9_999_999 }),
+  );
+  assert.deepEqual(repeatedSubmitted, submitted);
+  assert.equal(repeatedSubmitted.state, "submitted");
+  assert.equal(repeatedSubmitted.expiresAt, claimed.expiresAt);
   assert.equal(store.getActiveJob(), null);
 
   const next = store.activate(activation({ items: [stagedItem(4)] }));
@@ -449,6 +477,12 @@ test("enforces the bridge job state machine", () => {
 
   assert.equal(store.transition(staged.jobId, "claimed").state, "claimed");
   assert.equal(store.transition(staged.jobId, "submitted").state, "submitted");
+  for (const state of ["verified", "unverified"]) {
+    assert.throws(
+      () => store.transition(staged.jobId, state),
+      expectStoreError("INVALID_TRANSITION"),
+    );
+  }
   assert.equal(store.transition(staged.jobId, "verifying").state, "verifying");
   assert.equal(
     store.transition(staged.jobId, "unverified").state,

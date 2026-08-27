@@ -1,6 +1,7 @@
 .vscode
 build
 logs
+mcp-adapter/.venv
 node_modules
 package-lock.json
 yarn.lock

@@ -25,9 +25,49 @@ const stablePackageName = "zotero-gemini-notebook";
 const legacyRepository = "peterdresslar/zotero-notebooklm";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
+const destinationFilename = "destination.js";
+const injectorAttemptFilename = "injector-attempt.js";
+const uploadHandoffFilename = "upload-handoff.js";
 const dialogUploadStatusFilename = "dialog-upload-status.js";
 const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
+const jobLifecycleFilename = "job-lifecycle.js";
+const backgroundFilename = "background.js";
+const chromePackageEntries = [
+  backgroundFilename,
+  bridgeRequestsFilename,
+  "compatibility.js",
+  "content.js",
+  destinationFilename,
+  dialogUploadStatusFilename,
+  geminiControlsFilename,
+  "icons/",
+  "icons/icon128.png",
+  "icons/icon16.png",
+  "icons/icon48.png",
+  injectorAttemptFilename,
+  "injector.js",
+  jobLifecycleFilename,
+  "manifest.json",
+  "popup.html",
+  "popup.js",
+  "source-verification.js",
+  uploadHandoffFilename,
+  uploadTransferFilename,
+].sort();
+const chromePackageFiles = chromePackageEntries.filter(
+  (entry) => !entry.endsWith("/"),
+);
+const zoteroRuntimeBundleEntry = "content/scripts/zoteroNotebookLM.js";
+const zoteroMcpAdapterPrefix = "content/mcp-adapter/";
+const zoteroMcpAdapterEntries = [
+  "server.py",
+  "zotero_control.py",
+  "zotero_jobs.py",
+  "zotero_status.py",
+  "pyproject.toml",
+  "uv.lock",
+].map((filename) => `${zoteroMcpAdapterPrefix}${filename}`);
 
 function assert(condition, message) {
   if (!condition) {
@@ -67,6 +107,19 @@ function readArchiveEntry(archivePath, entryPath) {
     throw new Error(
       `Could not read ${entryPath} from ${basename(archivePath)}. ` +
         "Install the unzip command and confirm the archive is valid.",
+      { cause: error },
+    );
+  }
+}
+
+function readArchiveEntryBuffer(archivePath, entryPath) {
+  try {
+    return execFileSync("unzip", ["-p", archivePath, entryPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not read ${entryPath} from ${basename(archivePath)}`,
       { cause: error },
     );
   }
@@ -129,6 +182,72 @@ function assertArchiveIntegrity(archivePath) {
       cause: error,
     });
   }
+}
+
+function assertExactEntries(actualEntries, expectedEntries, description) {
+  assert(
+    Array.isArray(actualEntries) &&
+      actualEntries.every((entry) => typeof entry === "string"),
+    `${description} entries must be strings`,
+  );
+  assert(
+    new Set(actualEntries).size === actualEntries.length,
+    `${description} must not contain duplicate entries`,
+  );
+  const actual = [...actualEntries].sort();
+  const expected = [...expectedEntries].sort();
+  assert(
+    JSON.stringify(actual) === JSON.stringify(expected),
+    `${description} inventory differs from the fixed Chrome package inventory`,
+  );
+}
+
+function assertChromePackageInventory(entries, { sourceFiles = false } = {}) {
+  assertExactEntries(
+    entries,
+    sourceFiles ? chromePackageFiles : chromePackageEntries,
+    sourceFiles ? "Chrome extension source" : "Chrome extension package",
+  );
+}
+
+function assertChromePackageByteParity(packagedFiles, sourceFiles) {
+  assert(packagedFiles instanceof Map, "Packaged Chrome files must be a Map");
+  assert(sourceFiles instanceof Map, "Source Chrome files must be a Map");
+  for (const filename of chromePackageFiles) {
+    const packaged = packagedFiles.get(filename);
+    const source = sourceFiles.get(filename);
+    assert(
+      Buffer.isBuffer(packaged) && Buffer.isBuffer(source),
+      `Missing Chrome package byte comparison for ${filename}`,
+    );
+    assert(
+      packaged.equals(source),
+      `Chrome package entry differs from source: ${filename}`,
+    );
+  }
+}
+
+async function listDirectoryFiles(directory, prefix = "") {
+  const files = [];
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolutePath = join(directory, entry.name);
+    assert(
+      !entry.isSymbolicLink(),
+      `Chrome extension source must not contain symlinks: ${relativePath}`,
+    );
+    if (entry.isDirectory()) {
+      files.push(...(await listDirectoryFiles(absolutePath, relativePath)));
+    } else {
+      assert(
+        entry.isFile(),
+        `Chrome extension source contains an unsupported entry: ${relativePath}`,
+      );
+      files.push(relativePath);
+    }
+  }
+  return files.sort();
 }
 
 function repositoryFromPackage(packageJSON) {
@@ -325,11 +444,20 @@ function assertChromeRuntimePackage(
     "https://notebook.google.com/*",
     "https://notebooklm.google.com/*",
   ];
+  const requiredHostPatterns = [
+    "http://127.0.0.1:23119/*",
+    ...notebookHostPatterns,
+  ];
   const requiredRuntimeFilenames = [
     uploadTransferFilename,
+    destinationFilename,
+    injectorAttemptFilename,
+    uploadHandoffFilename,
     dialogUploadStatusFilename,
     bridgeRequestsFilename,
     geminiControlsFilename,
+    jobLifecycleFilename,
+    backgroundFilename,
     "content.js",
     "injector.js",
   ];
@@ -341,12 +469,35 @@ function assertChromeRuntimePackage(
     );
   }
 
-  for (const hostPattern of notebookHostPatterns) {
-    assert(
-      manifest.host_permissions?.includes(hostPattern),
-      `${description} manifest must grant host permission for ${hostPattern}`,
-    );
-  }
+  assert(
+    Array.isArray(manifest.host_permissions) &&
+      manifest.host_permissions.length === requiredHostPatterns.length &&
+      requiredHostPatterns.every((pattern) =>
+        manifest.host_permissions.includes(pattern),
+      ) &&
+      new Set(manifest.host_permissions).size === requiredHostPatterns.length,
+    `${description} manifest must grant exactly the fixed Zotero and Gemini Notebook host permissions`,
+  );
+
+  assert(
+    Array.isArray(manifest.permissions) &&
+      manifest.permissions.length === 1 &&
+      manifest.permissions[0] === "activeTab",
+    `${description} manifest must retain only the activeTab extension permission`,
+  );
+  assert(
+    manifest.externally_connectable === undefined,
+    `${description} manifest must not expose externally_connectable messaging`,
+  );
+
+  assert(
+    manifest.background?.service_worker === backgroundFilename,
+    `${description} manifest must register ${backgroundFilename} as its service worker`,
+  );
+  assert(
+    manifest.background?.type === "module",
+    `${description} manifest must load ${backgroundFilename} as a module`,
+  );
 
   const contentScript = manifest.content_scripts?.find((entry) =>
     entry.js?.includes("content.js"),
@@ -357,6 +508,11 @@ function assertChromeRuntimePackage(
   );
   const contentScriptIndex = contentScript.js.indexOf("content.js");
   const transferScriptIndex = contentScript.js.indexOf(uploadTransferFilename);
+  const destinationScriptIndex = contentScript.js.indexOf(destinationFilename);
+  const injectorAttemptScriptIndex = contentScript.js.indexOf(
+    injectorAttemptFilename,
+  );
+  const handoffScriptIndex = contentScript.js.indexOf(uploadHandoffFilename);
   const dialogStatusScriptIndex = contentScript.js.indexOf(
     dialogUploadStatusFilename,
   );
@@ -372,6 +528,18 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${uploadTransferFilename} before content.js`,
   );
   assert(
+    destinationScriptIndex !== -1,
+    `${description} manifest must load ${destinationFilename} with content.js`,
+  );
+  assert(
+    injectorAttemptScriptIndex !== -1,
+    `${description} manifest must load ${injectorAttemptFilename} with content.js`,
+  );
+  assert(
+    handoffScriptIndex !== -1,
+    `${description} manifest must load ${uploadHandoffFilename} with content.js`,
+  );
+  assert(
     dialogStatusScriptIndex !== -1,
     `${description} manifest must load ${dialogUploadStatusFilename} with content.js`,
   );
@@ -380,11 +548,17 @@ function assertChromeRuntimePackage(
     `${description} manifest must load ${geminiControlsFilename} with content.js`,
   );
   assert(
-    transferScriptIndex < dialogStatusScriptIndex &&
+    transferScriptIndex < destinationScriptIndex &&
+      destinationScriptIndex < injectorAttemptScriptIndex &&
+      injectorAttemptScriptIndex < handoffScriptIndex &&
+      handoffScriptIndex < dialogStatusScriptIndex &&
       dialogStatusScriptIndex < geminiControlsScriptIndex &&
       geminiControlsScriptIndex < contentScriptIndex,
     `${description} manifest must load ${uploadTransferFilename}, ` +
-      `${dialogUploadStatusFilename}, ${geminiControlsFilename}, and content.js ` +
+      `${destinationFilename}, ${injectorAttemptFilename}, ` +
+      `${uploadHandoffFilename}, ` +
+      `${dialogUploadStatusFilename}, ` +
+      `${geminiControlsFilename}, and content.js ` +
       "in that order",
   );
   for (const hostPattern of notebookHostPatterns) {
@@ -404,6 +578,15 @@ function assertChromeRuntimePackage(
   assert(
     injectorScript.world === "MAIN",
     `${description} manifest must load injector.js in the MAIN world`,
+  );
+  const mainWorldAttemptIndex = injectorScript.js.indexOf(
+    injectorAttemptFilename,
+  );
+  const mainWorldInjectorIndex = injectorScript.js.indexOf("injector.js");
+  assert(
+    mainWorldAttemptIndex !== -1 &&
+      mainWorldAttemptIndex < mainWorldInjectorIndex,
+    `${description} manifest must load ${injectorAttemptFilename} before injector.js in the MAIN world`,
   );
   for (const hostPattern of notebookHostPatterns) {
     assert(
@@ -429,6 +612,9 @@ function assertChromeRuntimePackage(
   const popupTransferIndex = scriptTags.findIndex(
     ({ source }) => source === uploadTransferFilename,
   );
+  const popupDestinationIndex = scriptTags.findIndex(
+    ({ source }) => source === destinationFilename,
+  );
   const popupDialogStatusIndex = scriptTags.findIndex(
     ({ source }) => source === dialogUploadStatusFilename,
   );
@@ -449,9 +635,117 @@ function assertChromeRuntimePackage(
     `${description} popup.html must load ${uploadTransferFilename} before popup.js`,
   );
   assert(
+    popupDestinationIndex !== -1,
+    `${description} popup.html must load ${destinationFilename}`,
+  );
+  assert(
+    popupTransferIndex < popupDestinationIndex &&
+      popupDestinationIndex < popupScriptIndex,
+    `${description} popup.html must load ${uploadTransferFilename}, ` +
+      `${destinationFilename}, and popup.js in that order`,
+  );
+  assert(
     popupDialogStatusIndex === -1,
     `${description} popup.html must not load ${dialogUploadStatusFilename}`,
   );
+}
+
+function assertZoteroMcpRuntimePackage(
+  bundle,
+  packageEntries,
+  description = "Zotero XPI",
+) {
+  for (const entry of [
+    zoteroRuntimeBundleEntry,
+    "content/mcp-config-dialog.xhtml",
+    "content/mcp-config-dialog.css",
+  ]) {
+    assert(
+      packageEntries.includes(entry),
+      `${description} must include ${entry}`,
+    );
+  }
+
+  const packagedAdapterEntries = packageEntries.filter(
+    (entry) =>
+      entry.startsWith(zoteroMcpAdapterPrefix) &&
+      entry !== zoteroMcpAdapterPrefix,
+  );
+  const missingAdapterEntries = zoteroMcpAdapterEntries.filter(
+    (entry) => !packagedAdapterEntries.includes(entry),
+  );
+  const unexpectedAdapterEntries = packagedAdapterEntries.filter(
+    (entry) => !zoteroMcpAdapterEntries.includes(entry),
+  );
+  assert(
+    missingAdapterEntries.length === 0,
+    `${description} must include the bundled MCP adapter files: ${missingAdapterEntries.join(", ")}`,
+  );
+  assert(
+    unexpectedAdapterEntries.length === 0 &&
+      packagedAdapterEntries.length === zoteroMcpAdapterEntries.length,
+    `${description} contains unexpected MCP adapter files: ${unexpectedAdapterEntries.join(", ")}`,
+  );
+
+  for (const marker of [
+    "ZGN-LOCAL-AUTH-V1",
+    "/notebooklm/control/v1/auth-check",
+    '/notebooklm/control/v1/jobs"',
+    '/notebooklm/control/v1/jobs/status"',
+    "application/vnd.zotero-gemini-notebook.job+json",
+    "application/vnd.zotero-gemini-notebook.job-status+json",
+    "/notebooklm/job-claim",
+    "/notebooklm/job-event",
+    "application/vnd.zotero-gemini-notebook.job-claim+json",
+    "application/vnd.zotero-gemini-notebook.job-event+json",
+    "maxByteSize",
+  ]) {
+    assert(
+      bundle.includes(marker),
+      `${description} runtime bundle must include ${marker}`,
+    );
+  }
+}
+
+function assertMcpAdapterByteParity(
+  packagedFiles,
+  sourceFiles,
+  description = "Zotero XPI",
+) {
+  for (const entry of zoteroMcpAdapterEntries) {
+    const filename = entry.slice(zoteroMcpAdapterPrefix.length);
+    const packaged = packagedFiles.get(entry);
+    const source = sourceFiles.get(filename);
+    assert(
+      Buffer.isBuffer(packaged) && Buffer.isBuffer(source),
+      `${description} byte comparison is missing ${filename}`,
+    );
+    assert(
+      packaged.equals(source),
+      `${description} bundled MCP adapter differs from source: ${filename}`,
+    );
+  }
+}
+
+async function assertLocalMcpAdapterBytes(xpiPath) {
+  const packagedFiles = new Map(
+    zoteroMcpAdapterEntries.map((entry) => [
+      entry,
+      readArchiveEntryBuffer(xpiPath, entry),
+    ]),
+  );
+  const sourceFiles = new Map(
+    await Promise.all(
+      zoteroMcpAdapterEntries.map(async (entry) => {
+        const filename = entry.slice(zoteroMcpAdapterPrefix.length);
+        return [
+          filename,
+          await readFile(join(projectRoot, "mcp-adapter", filename)),
+        ];
+      }),
+    ),
+  );
+  assertMcpAdapterByteParity(packagedFiles, sourceFiles);
 }
 
 function parseUpdateHash(updateHash) {
@@ -544,6 +838,8 @@ async function validateLocalRelease(packageJSON) {
     "utf8",
   );
   const sourceChromeEntries = await readdir(chromeSourceDirectory);
+  const sourceChromeFiles = await listDirectoryFiles(chromeSourceDirectory);
+  assertChromePackageInventory(sourceChromeFiles, { sourceFiles: true });
   assertChromeRuntimePackage(
     sourceChromeManifest,
     sourcePopupHTML,
@@ -564,14 +860,22 @@ async function validateLocalRelease(packageJSON) {
   );
   assertArchiveIntegrity(xpiPath);
   assertArchiveIntegrity(chromePath);
-  assertArchiveHygiene(xpiPath);
+  const xpiArchiveEntries = listArchiveEntries(xpiPath);
+  assertArchiveHygiene(xpiPath, xpiArchiveEntries);
   const chromeArchiveEntries = listArchiveEntries(chromePath);
   assertArchiveHygiene(chromePath, chromeArchiveEntries);
+  assertChromePackageInventory(chromeArchiveEntries);
 
   const xpiManifest = readArchiveJSON(xpiPath, "manifest.json");
+  const zoteroRuntimeBundle = readArchiveEntry(
+    xpiPath,
+    zoteroRuntimeBundleEntry,
+  );
   const chromeManifest = readArchiveJSON(chromePath, "manifest.json");
   const chromePopupHTML = readArchiveEntry(chromePath, "popup.html");
   const zoteroCompatibility = assertZoteroManifest(xpiManifest, expected);
+  assertZoteroMcpRuntimePackage(zoteroRuntimeBundle, xpiArchiveEntries);
+  await assertLocalMcpAdapterBytes(xpiPath);
   assertChromeManifest(chromeManifest, expected);
   assertChromeRuntimePackage(
     chromeManifest,
@@ -579,6 +883,21 @@ async function validateLocalRelease(packageJSON) {
     chromeArchiveEntries,
     "Chrome extension package",
   );
+  const sourceChromeBytes = new Map(
+    await Promise.all(
+      chromePackageFiles.map(async (filename) => [
+        filename,
+        await readFile(join(chromeSourceDirectory, filename)),
+      ]),
+    ),
+  );
+  const packagedChromeBytes = new Map(
+    chromePackageFiles.map((filename) => [
+      filename,
+      readArchiveEntryBuffer(chromePath, filename),
+    ]),
+  );
+  assertChromePackageByteParity(packagedChromeBytes, sourceChromeBytes);
 
   const updateManifest = await readJSON(
     updatePath,
@@ -814,7 +1133,11 @@ if (
 }
 
 export {
+  assertChromePackageByteParity,
+  assertChromePackageInventory,
   assertChromeRuntimePackage,
+  assertMcpAdapterByteParity,
+  assertZoteroMcpRuntimePackage,
   assertUpdateManifest,
   parseUpdateHash,
   releaseContext,

@@ -44,8 +44,13 @@ export function isReady(): boolean {
 export function claimStagedJob(
   expectedJobId?: string,
   selectedAttachmentIds?: number[],
+  claimId?: string,
 ): ReturnType<typeof bridgeJobStore.claimActive> {
-  return bridgeJobStore.claimActive(expectedJobId, selectedAttachmentIds);
+  return bridgeJobStore.claimActive(
+    expectedJobId,
+    selectedAttachmentIds,
+    claimId,
+  );
 }
 
 export function getCurrentStagedJob(): ReturnType<
@@ -62,9 +67,12 @@ export function isStagedAttachment(
   attachmentId: number,
   expectedJobId?: string,
 ): boolean {
-  const pendingJob = bridgeJobStore.getActiveJob();
-  if (expectedJobId !== undefined && pendingJob?.jobId !== expectedJobId) {
-    return false;
-  }
-  return bridgeJobStore.hasPendingAttachment(attachmentId);
+  return getStagedAttachmentAccess(attachmentId, expectedJobId) !== null;
+}
+
+export function getStagedAttachmentAccess(
+  attachmentId: number,
+  expectedJobId?: string,
+): Readonly<{ maxByteSize: number | null }> | null {
+  return bridgeJobStore.getAttachmentAccess(attachmentId, expectedJobId);
 }

@@ -1,0 +1,376 @@
+#mcp-config-dialog {
+  min-width: 560px;
+  overflow: hidden;
+  font: message-box;
+}
+
+.mcp-config-header {
+  padding: 8px 10px 4px;
+}
+
+.mcp-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-config-header h1 {
+  margin: 0;
+  color: -moz-DialogText;
+  font-size: 20px;
+}
+
+.mcp-beta-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background-color: Highlight;
+  color: HighlightText;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.mcp-config-header p {
+  margin: 6px 0 0;
+  color: -moz-DialogText;
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+
+.mcp-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 10px 10px;
+  padding: 9px 11px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background-color: Field;
+  color: FieldText;
+  font-size: 13px;
+}
+
+.mcp-status strong {
+  flex-shrink: 0;
+}
+
+.mcp-status-off {
+  opacity: 0.75;
+}
+
+.mcp-status-enabled {
+  border-color: Highlight;
+}
+
+.mcp-status-dirty {
+  border-style: dashed;
+}
+
+.mcp-enable-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 10px;
+  padding: 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  color: -moz-DialogText;
+  cursor: pointer;
+}
+
+.mcp-enable-row input {
+  margin-top: 2px;
+}
+
+.mcp-enable-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mcp-enable-row small,
+.mcp-field-help,
+.mcp-defaults-row span,
+.mcp-recovery-row small {
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.72;
+}
+
+.mcp-settings-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 11px;
+  min-height: 0;
+  margin: 0 10px 10px;
+  padding: 8px 10px 12px;
+  overflow-y: auto;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  color: -moz-DialogText;
+}
+
+.mcp-settings-panel .pane-header {
+  margin: 0;
+  padding: 0 0 6px;
+  border-bottom: 1px solid ThreeDLightShadow;
+  font-size: 14px;
+}
+
+.mcp-settings-panel[aria-busy="true"] {
+  cursor: progress;
+}
+
+.mcp-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mcp-form-row > label {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.mcp-form-row input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 29px;
+  padding: 4px 7px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 3px;
+  background-color: Field;
+  color: FieldText;
+  font: inherit;
+  font-size: 13px;
+}
+
+.mcp-form-row menulist {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 29px;
+  margin: 0;
+  color: -moz-DialogText;
+  font-size: 13px;
+}
+
+.mcp-form-row input:disabled,
+.mcp-form-row menulist[disabled="true"],
+.mcp-settings-panel button:disabled {
+  cursor: default;
+}
+
+.mcp-path-row {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.mcp-path-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-settings-panel button {
+  padding: 4px 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 3px;
+  background-color: ButtonFace;
+  color: ButtonText;
+  font: inherit;
+  font-size: 13px;
+}
+
+.mcp-settings-panel button:not(:disabled):hover {
+  background-color: -moz-MenuHover;
+  color: -moz-MenuHoverText;
+}
+
+.mcp-defaults-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mcp-auto-configure-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid Highlight;
+  border-radius: 5px;
+  background-color: Field;
+  color: FieldText;
+}
+
+.mcp-auto-configure-panel h3,
+.mcp-auto-configure-panel p {
+  margin: 0;
+}
+
+.mcp-auto-configure-panel h3 {
+  font-size: 14px;
+}
+
+.mcp-auto-configure-panel p,
+.mcp-auto-configure-status {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mcp-auto-configure-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mcp-settings-panel .mcp-auto-configure-button {
+  flex-shrink: 0;
+  padding: 6px 15px;
+  border-color: Highlight;
+  background-color: Highlight;
+  color: HighlightText;
+  font-weight: bold;
+}
+
+.mcp-settings-panel .mcp-auto-configure-button:not(:disabled):hover {
+  filter: brightness(1.08);
+  background-color: Highlight;
+  color: HighlightText;
+}
+
+.mcp-auto-configure-status,
+.mcp-advanced-intro {
+  opacity: 0.78;
+}
+
+.mcp-advanced-settings {
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background-color: -moz-Dialog;
+  color: -moz-DialogText;
+}
+
+.mcp-advanced-settings > summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.mcp-advanced-settings[open] > summary {
+  border-bottom: 1px solid ThreeDLightShadow;
+}
+
+.mcp-advanced-content {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 10px;
+}
+
+.mcp-advanced-intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mcp-client-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background-color: Field;
+  color: FieldText;
+}
+
+.mcp-client-setup h3,
+.mcp-client-setup p {
+  margin: 0;
+}
+
+.mcp-client-setup h3,
+.mcp-client-setup > label {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.mcp-client-setup p,
+.mcp-copy-status,
+.mcp-server-name-row {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mcp-server-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mcp-server-name-row span {
+  font-weight: bold;
+}
+
+.mcp-client-setup textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  padding: 6px 7px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 3px;
+  background-color: -moz-Dialog;
+  color: -moz-DialogText;
+  font-family: monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.mcp-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mcp-copy-status {
+  opacity: 0.72;
+}
+
+.mcp-recovery-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid ThreeDShadow;
+  border-radius: 4px;
+  background-color: Field;
+  color: FieldText;
+}
+
+.mcp-recovery-row[hidden] {
+  display: none;
+}
+
+.mcp-recovery-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mcp-recovery-row button {
+  flex-shrink: 0;
+}
+
+#mcp-config-bottom-bar {
+  padding: 8px;
+  border-top: 1px solid ThreeDShadow;
+  gap: 8px;
+}

@@ -19,12 +19,28 @@
       : "Adding Zotero sources…";
   }
 
-  function formatAssistedMessage(fileCount) {
+  function formatAssistedMessage(fileCount, action) {
     if (!Number.isInteger(fileCount) || fileCount <= 0) {
       throw new TypeError("File count must be a positive integer");
     }
+    const actionLabel =
+      action === "add-sources"
+        ? "Add sources"
+        : action === "upload-files"
+          ? "Upload files"
+          : null;
+    if (!actionLabel) {
+      throw new TypeError(
+        "Assisted action must be add-sources or upload-files",
+      );
+    }
     const noun = fileCount === 1 ? "file is" : "files are";
-    return `${fileCount} ${noun} ready from Zotero. Click the highlighted button to continue.`;
+    const instruction =
+      action === "upload-files"
+        ? "Now processing files: please don't leave this window. If you are stuck, try pressing the Upload files button."
+        : "Click the highlighted Add sources button to open the upload dialog.";
+    const message = `${fileCount} ${noun} ready from Zotero. ${instruction}`;
+    return action === "upload-files" ? `Zotero Connector: ${message}` : message;
   }
 
   function isActiveDialog(element, view) {
@@ -110,6 +126,7 @@
     let fallbackKind = "status";
     let message = "";
     let kind = "status";
+    let spinnerVisible = false;
     let observer = null;
     let panel = null;
     let spinnerAnimation = null;
@@ -130,7 +147,8 @@
         display: "flex",
         alignItems: "center",
         gap: "10px",
-        margin: "0 0 18px",
+        marginBlock: "-20px 18px",
+        marginInline: "0",
         padding: "10px 12px",
         border: "1px solid rgba(26, 115, 232, 0.28)",
         borderRadius: "8px",
@@ -204,9 +222,9 @@
           : "rgba(26, 115, 232, 0.08)";
       const spinner = panel.querySelector(`[${SPINNER_MARKER}="true"]`);
       if (spinner) {
-        spinner.hidden = kind === "error";
-        spinner.style.display = kind === "error" ? "none" : "inline-block";
-        if (kind === "error") stopSpinner();
+        spinner.hidden = !spinnerVisible;
+        spinner.style.display = spinnerVisible ? "inline-block" : "none";
+        if (!spinnerVisible) stopSpinner();
         else startSpinner(spinner);
       }
       const text = panel.querySelector(
@@ -291,6 +309,10 @@
       if (kind !== "status" && kind !== "error") {
         throw new TypeError("Status kind must be status or error");
       }
+      spinnerVisible = options.spinner ?? kind === "status";
+      if (typeof spinnerVisible !== "boolean") {
+        throw new TypeError("Spinner visibility must be a boolean");
+      }
       clearFallback();
       active = true;
       ensurePanel();
@@ -300,11 +322,13 @@
     }
 
     function setAdding({ createdNotebook = false } = {}) {
-      show(formatAddingMessage(createdNotebook));
+      show(formatAddingMessage(createdNotebook), { spinner: true });
     }
 
-    function setAssisted({ fileCount } = {}) {
-      show(formatAssistedMessage(fileCount));
+    function setAssisted({ action, fileCount } = {}) {
+      show(formatAssistedMessage(fileCount, action), {
+        spinner: action === "upload-files",
+      });
     }
 
     function showError(nextMessage) {
