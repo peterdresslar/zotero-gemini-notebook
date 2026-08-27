@@ -315,7 +315,7 @@ test("Zotero runtime package contains only the six adapter runtime files", () =>
   }
 
   for (const unexpectedEntry of [
-    "content/mcp-adapter/README.md",
+    "content/mcp-adapter/AGENTS.md",
     "content/mcp-adapter/tests/test_server.py",
     "content/mcp-adapter/.venv/bin/python",
     "content/mcp-adapter/__pycache__/server.cpython-313.pyc",
