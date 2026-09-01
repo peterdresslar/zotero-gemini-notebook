@@ -56,7 +56,7 @@ For normal use, install from the latest GitHub release. You do not need Node.js 
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
 4. Select the unzipped Chrome extension folder. It should be the folder that contains `manifest.json`.
-5. Optional: pin **Zotero → Gemini Notebook** to your Chrome toolbar.
+5. Optional: pin **Zotero-Gemini Notebook Connector** to your Chrome toolbar.
 
 Install the Zotero plugin and Chrome companion from the same release. Zotero can update the plugin automatically, but the unpacked Chrome companion does not update itself: replace its files, click **Reload** on `chrome://extensions/`, and refresh open Gemini Notebook tabs. If the popup reports a version mismatch, update the component it identifies.
 
@@ -118,7 +118,7 @@ For collection browsing, searching, or more deliberate selection:
 ### Step 2: Import into Gemini Notebook
 
 1. Open [Gemini Notebook](https://notebook.google.com) in Chrome. Both the current `notebook.google.com` host and the legacy `notebooklm.google.com` host are supported. You may open an existing notebook, or start from the main page and let the extension create a new notebook.
-2. Click the Zotero → Gemini Notebook extension icon in your Chrome toolbar
+2. Click the Zotero-Gemini Notebook Connector icon in your Chrome toolbar
 3. The popup will show your staged sources with a green "Zotero connected" indicator
 4. Click **Import to Gemini Notebook**
 5. If the page highlights **Add sources** or **Upload files**, click that Gemini Notebook button once. Chrome requires a genuine page click before Gemini can expose its file input; you do not need to choose the files.
@@ -138,6 +138,10 @@ During Chrome-extension development, you can load `chrome-extension/` directly i
 
 - Large batches may take longer to start because Gemini Notebook creates its upload controls asynchronously.
 - Gemini Notebook's DOM structure may change without notice, which could break the upload mechanism.
+
+## Privacy
+
+The connector processes staged Zotero metadata and files locally, then sends selected files directly to Gemini Notebook only when you start an import. The developer does not receive them. See the [Privacy Policy](PRIVACY.md) for details.
 
 ## License
 

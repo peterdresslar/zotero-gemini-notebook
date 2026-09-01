@@ -22,6 +22,7 @@ const buildDirectory = join(projectRoot, ".scaffold", "build");
 const stableAddonID = "zotero-notebooklm@peterdresslar.com";
 const stableRepository = "peterdresslar/zotero-gemini-notebook";
 const stablePackageName = "zotero-gemini-notebook";
+const stableChromeExtensionName = "Zotero-Gemini Notebook Connector";
 const legacyRepository = "peterdresslar/zotero-notebooklm";
 const allowedHashAlgorithms = new Set(["sha256", "sha512"]);
 const uploadTransferFilename = "upload-transfer.js";
@@ -462,6 +463,11 @@ function assertChromeRuntimePackage(
     "injector.js",
   ];
 
+  assert(
+    manifest.name === stableChromeExtensionName,
+    `${description} name must remain ${stableChromeExtensionName}`,
+  );
+
   for (const filename of requiredRuntimeFilenames) {
     assert(
       packageEntries.includes(filename),
@@ -480,10 +486,19 @@ function assertChromeRuntimePackage(
   );
 
   assert(
-    Array.isArray(manifest.permissions) &&
-      manifest.permissions.length === 1 &&
-      manifest.permissions[0] === "activeTab",
-    `${description} manifest must retain only the activeTab extension permission`,
+    (manifest.permissions === undefined ||
+      (Array.isArray(manifest.permissions) &&
+        manifest.permissions.length === 0)) &&
+      (manifest.optional_permissions === undefined ||
+        (Array.isArray(manifest.optional_permissions) &&
+          manifest.optional_permissions.length === 0)),
+    `${description} manifest must not request extension API permissions`,
+  );
+  assert(
+    manifest.optional_host_permissions === undefined ||
+      (Array.isArray(manifest.optional_host_permissions) &&
+        manifest.optional_host_permissions.length === 0),
+    `${description} manifest must not request optional host permissions`,
   );
   assert(
     manifest.externally_connectable === undefined,

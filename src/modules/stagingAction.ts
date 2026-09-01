@@ -45,7 +45,7 @@ export function showStagingSuccess(
     closeOnClick: true,
     closeTime: 10000,
   }).createLine({
-    text: `${stagedCount} item${stagedCount === 1 ? "" : "s"} staged. Open Gemini Notebook in Chrome, then open the Zotero → Gemini Notebook extension and click Import to Gemini Notebook.`,
+    text: `${stagedCount} item${stagedCount === 1 ? "" : "s"} staged. Open Gemini Notebook in Chrome, then open the Zotero-Gemini Notebook Connector extension and click Import to Gemini Notebook.`,
     type: "success",
     progress: 100,
   });

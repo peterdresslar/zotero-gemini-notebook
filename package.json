@@ -1,7 +1,7 @@
 {
   "name": "zotero-gemini-notebook",
   "type": "module",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Export Zotero items to Gemini Notebook (formerly NotebookLM)",
   "config": {
     "addonName": "Zotero Gemini Notebook",
@@ -12,7 +12,8 @@
   },
   "companionCompatibility": {
     "validVersions": [
-      "0.4.0"
+      "0.4.0",
+      "0.4.1"
     ]
   },
   "repository": {
@@ -70,6 +71,14 @@
         ],
         "options": {
           "htmlWhitespaceSensitivity": "css"
+        }
+      },
+      {
+        "files": [
+          "*.svg"
+        ],
+        "options": {
+          "parser": "html"
         }
       }
     ]

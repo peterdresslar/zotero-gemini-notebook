@@ -41,13 +41,13 @@ const zoteroRuntimeBundle = [
 
 const packageJSON = {
   name: "zotero-gemini-notebook",
-  version: "0.4.0",
+  version: "0.4.1",
   config: {
     addonName: "Zotero Gemini Notebook",
     addonID: "zotero-notebooklm@peterdresslar.com",
   },
   companionCompatibility: {
-    validVersions: ["0.4.0"],
+    validVersions: ["0.4.0", "0.4.1"],
   },
   repository: {
     url: "git+https://github.com/peterdresslar/zotero-gemini-notebook.git",
@@ -60,8 +60,8 @@ const compatibility = {
 };
 
 const chromeManifest = {
-  version: "0.4.0",
-  permissions: ["activeTab"],
+  name: "Zotero-Gemini Notebook Connector",
+  version: "0.4.1",
   host_permissions: [
     "http://127.0.0.1:23119/*",
     "https://notebook.google.com/*",
@@ -149,10 +149,10 @@ function updateManifest(expected, overrides = {}) {
 test("release context pins the stable identity and URLs", () => {
   const context = releaseContext(packageJSON);
   nodeAssert.equal(context.addonID, packageJSON.config.addonID);
-  nodeAssert.deepEqual(
-    context.compatibleChromeExtensionVersions,
-    packageJSON.companionCompatibility.validVersions,
-  );
+  nodeAssert.deepEqual(context.compatibleChromeExtensionVersions, [
+    "0.4.0",
+    "0.4.1",
+  ]);
   nodeAssert.equal(
     context.manifestURL,
     "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/release/update.json",
@@ -163,7 +163,7 @@ test("release context pins the stable identity and URLs", () => {
   );
   nodeAssert.equal(
     context.xpiURL,
-    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.4.0/zotero-gemini-notebook.xpi",
+    "https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.4.1/zotero-gemini-notebook.xpi",
   );
   nodeAssert.equal(context.updateFilename, "update.json");
   nodeAssert.equal(context.unusedUpdateFilename, "update-beta.json");
@@ -212,7 +212,7 @@ test("release context rejects a companion excluded by its paired plugin", () => 
           validVersions: ["0.3.1"],
         },
       }),
-    /Chrome extension 0\.4\.0 must be compatible/,
+    /Chrome extension 0\.4\.1 must be compatible/,
   );
 });
 
@@ -220,8 +220,8 @@ test("release context rejects invalid companion allowlists", () => {
   for (const validVersions of [
     undefined,
     [],
-    ["0.4.0", null],
-    ["0.4.0", "0.4.0"],
+    ["0.4.1", null],
+    ["0.4.1", "0.4.1"],
   ]) {
     nodeAssert.throws(() =>
       releaseContext({
@@ -496,14 +496,42 @@ test("Chrome runtime package registers the lifecycle service worker", () => {
 });
 
 test("Chrome lifecycle does not add extension permissions", () => {
+  for (const permissionOverride of [
+    { permissions: ["activeTab"] },
+    { permissions: ["storage"] },
+    { optional_permissions: ["storage"] },
+  ]) {
+    nodeAssert.throws(
+      () =>
+        assertChromeRuntimePackage(
+          { ...chromeManifest, ...permissionOverride },
+          popupHTML,
+          chromePackageEntries,
+        ),
+      /must not request extension API permissions/u,
+    );
+  }
+
   nodeAssert.throws(
     () =>
       assertChromeRuntimePackage(
-        { ...chromeManifest, permissions: ["activeTab", "storage"] },
+        { ...chromeManifest, optional_host_permissions: ["<all_urls>"] },
         popupHTML,
         chromePackageEntries,
       ),
-    /must retain only the activeTab extension permission/u,
+    /must not request optional host permissions/u,
+  );
+});
+
+test("Chrome runtime package retains its Store-facing name", () => {
+  nodeAssert.throws(
+    () =>
+      assertChromeRuntimePackage(
+        { ...chromeManifest, name: "Renamed companion" },
+        popupHTML,
+        chromePackageEntries,
+      ),
+    /name must remain Zotero-Gemini Notebook Connector/u,
   );
 });
 

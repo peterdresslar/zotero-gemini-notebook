@@ -1,0 +1,55 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="128"
+  height="128"
+  viewBox="0 0 128 128"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Zotero-Gemini Notebook Connector mark</title>
+  <desc id="desc">Source cards moving into an open notebook</desc>
+  <rect x="16" y="16" width="96" height="96" rx="22" fill="#18324a" />
+  <g>
+    <rect x="25" y="43" width="28" height="15" rx="5" fill="#c7d3df" />
+    <rect x="25" y="62" width="28" height="15" rx="5" fill="#ffffff" />
+    <path
+      d="M31 50h15"
+      fill="none"
+      stroke="#18324a"
+      stroke-linecap="round"
+      stroke-width="4"
+      opacity="0.7"
+    />
+    <path
+      d="M31 69h16"
+      fill="none"
+      stroke="#18324a"
+      stroke-linecap="round"
+      stroke-width="4"
+    />
+  </g>
+  <path
+    d="M56 60h13"
+    fill="none"
+    stroke="#f4b942"
+    stroke-linecap="round"
+    stroke-width="8"
+  />
+  <path
+    d="m65 51 10 9-10 9"
+    fill="none"
+    stroke="#f4b942"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="8"
+  />
+  <path d="M78 43c5-3 9-3 13 0v43c-4-3-8-4-13-1Z" fill="#55c2b2" />
+  <path d="M91 43c4-3 8-3 13 0v42c-5-3-9-2-13 1Z" fill="#ffffff" />
+  <path
+    d="M91 44v41"
+    fill="none"
+    stroke="#18324a"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+</svg>

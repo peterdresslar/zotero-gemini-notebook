@@ -175,11 +175,20 @@
         background: #fef7e0;
         border-bottom: 1px solid #fdd663;
       }
+
+      .import-disclosure {
+        padding: 6px 16px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #3c4043;
+        background: #e8f0fe;
+        border-top: 1px solid #d2e3fc;
+      }
     </style>
   </head>
   <body>
     <div class="header">
-      <h1>Zotero → Gemini Notebook</h1>
+      <h1>Zotero-Gemini Notebook Connector</h1>
     </div>
 
     <div class="status-bar">
@@ -206,9 +215,25 @@
       <div class="progress-text" id="progress-text"></div>
     </div>
 
+    <p id="import-disclosure" class="import-disclosure">
+      Selected files go directly to Google Gemini Notebook.<br />
+      The developer does not receive them.
+      <a
+        href="https://github.com/peterdresslar/zotero-gemini-notebook/blob/main/PRIVACY.md"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Privacy policy</a
+      >
+    </p>
+
     <div class="actions">
       <button id="refresh-btn" title="Refresh from Zotero">Refresh</button>
-      <button id="import-btn" class="primary" disabled>
+      <button
+        id="import-btn"
+        class="primary"
+        aria-describedby="import-disclosure"
+        disabled
+      >
         Import to Gemini Notebook
       </button>
     </div>
