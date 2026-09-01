@@ -1,0 +1,78 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="440"
+  height="280"
+  viewBox="0 0 440 280"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Zotero-Gemini Notebook Connector</title>
+  <desc id="desc">Chrome Web Store promotional tile</desc>
+  <rect width="440" height="280" fill="#18324a" />
+  <circle cx="32" cy="24" r="110" fill="#55c2b2" opacity="0.22" />
+  <circle cx="430" cy="270" r="130" fill="#f4b942" opacity="0.18" />
+  <g transform="translate(48 60)">
+    <rect width="128" height="46" rx="12" fill="#ffffff" opacity="0.7" />
+    <rect
+      x="0"
+      y="52"
+      width="128"
+      height="46"
+      rx="12"
+      fill="#ffffff"
+      opacity="0.85"
+    />
+    <rect x="0" y="104" width="128" height="46" rx="12" fill="#ffffff" />
+    <rect
+      x="20"
+      y="17"
+      width="63"
+      height="8"
+      rx="4"
+      fill="#18324a"
+      opacity="0.65"
+    />
+    <rect
+      x="20"
+      y="69"
+      width="75"
+      height="8"
+      rx="4"
+      fill="#18324a"
+      opacity="0.75"
+    />
+    <rect x="20" y="121" width="88" height="8" rx="4" fill="#18324a" />
+  </g>
+  <path
+    d="M193 140h54"
+    fill="none"
+    stroke="#f4b942"
+    stroke-linecap="round"
+    stroke-width="15"
+  />
+  <path
+    d="m235 116 27 24-27 24"
+    fill="none"
+    stroke="#f4b942"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="15"
+  />
+  <g transform="translate(272 56)">
+    <path
+      d="M45 12c23 0 40 8 54 23v128c-14-13-31-19-54-19-15 0-28 4-39 12V34C17 19 30 12 45 12Z"
+      fill="#55c2b2"
+    />
+    <path
+      d="M99 35c14-15 31-23 54-23 15 0 28 7 39 22v122c-11-8-24-12-39-12-23 0-40 6-54 19Z"
+      fill="#ffffff"
+    />
+    <path
+      d="M99 36v125"
+      fill="none"
+      stroke="#18324a"
+      stroke-linecap="round"
+      stroke-width="6"
+    />
+  </g>
+</svg>

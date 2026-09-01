@@ -1,0 +1,17 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="16"
+  height="16"
+  viewBox="0 0 16 16"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Zotero-Gemini Notebook Connector mark</title>
+  <desc id="desc">Source cards moving into an open notebook</desc>
+  <rect x="2" y="2" width="12" height="12" rx="3" fill="#18324a" />
+  <rect x="3" y="5" width="3" height="3" rx="0.75" fill="#c7d3df" />
+  <rect x="3" y="9" width="3" height="2" rx="0.75" fill="#ffffff" />
+  <path d="M6 7h1V6l2 2-2 2V9H6Z" fill="#f4b942" />
+  <path d="M10 5c1-1 2-1 2 0v7c-1-1-1-1-2 0Z" fill="#55c2b2" />
+  <path d="M12 5c1-1 2-1 2 0v7c-1-1-1-1-2 0Z" fill="#ffffff" />
+</svg>

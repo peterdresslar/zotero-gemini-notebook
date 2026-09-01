@@ -86,6 +86,27 @@ test("v0.4.0 beta accepts only the paired lifecycle-capable companion", () => {
   );
 });
 
+test("v0.4.1 Store rollout accepts the unpacked and Store companions", () => {
+  const compatibleVersions = ["0.4.0", "0.4.1"];
+  for (const companionVersion of compatibleVersions) {
+    assert.equal(
+      classifyChromeCompanionCompatibility(
+        compatibleVersions,
+        companionVersion,
+      ),
+      COMPATIBLE,
+    );
+  }
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.3.4"),
+    CHROME_UPDATE_REQUIRED,
+  );
+  assert.equal(
+    classifyChromeCompanionCompatibility(compatibleVersions, "0.4.2"),
+    ZOTERO_UPDATE_REQUIRED,
+  );
+});
+
 test("requires a Zotero update when Chrome is newer than every advertised version", () => {
   assert.equal(
     classifyChromeCompanionCompatibility(["0.3.0", "0.3.1"], "0.3.2"),
