@@ -1,5 +1,7 @@
 # Zotero → Gemini Notebook
 
+Hello there! Just to let you know: the Chrome Extension is now published [here](https://chrome.google.com/webstore/detail/pcjiogpdekoojnbfdcfcfjnbdojcofhp). To install, downloading the Zotero plugin (.xpi from the latest release) plus getting the Extension from the store link should be all you need to do. The next release will reflect the new store publication of the Chrome Extension.
+
 > **:sparkle: New in 0.4.0 :sparkle:**
 >
 > - Zotero 10 support.
