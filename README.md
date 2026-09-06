@@ -1,14 +1,12 @@
 # Zotero → Gemini Notebook
 
-Hello there! Just to let you know: the Chrome Extension is now published [here](https://chrome.google.com/webstore/detail/pcjiogpdekoojnbfdcfcfjnbdojcofhp). To install, downloading the Zotero plugin (.xpi from the latest release) plus getting the Extension from the store link should be all you need to do. The next release will reflect the new store publication of the Chrome Extension.
-
-> **:sparkle: New in 0.4.0 :sparkle:**
+> **:sparkle: New in 0.5.0 :sparkle:**
 >
-> - Zotero 10 support.
-> - Upgraded user interaction in the Chrome extension; we're hoping to make the file upload process as transparent as possible.
-> - New Beta MCP! Ask your AI agents to prep a notebook upload, head to your browser, and it's ready to load. A feature we hope to expand in the future.
+> - The Chrome Extension is now published to the Chrome Store and will auto-upgrade. You can install just by downloading the Zotero plugin and setup from within the upgraded tools menu.
+> - MCP functionality can now include a prompt for Studio creation in Gemini Notebook
+>
 
-Want an easier way to build notebooks in Gemini Notebook from Zotero files on your computer? This connector lets you browse your Zotero collections, stage source files, and send them to Gemini Notebook without manually digging through Zotero's filesystem.
+Want an easier way to build notebooks in Gemini Notebook (formerly NotebookLM) from Zotero files on your computer? This connector lets you browse your Zotero collections, stage source files, and send them to Gemini Notebook without manually digging through Zotero's filesystem.
 
 While the direct interface with the browser window is tricky to make perfect, we've made an effort to make the upload of Zotero articles to the web as seamless as possible.
 
@@ -20,7 +18,15 @@ While the direct interface with the browser window is tricky to make perfect, we
 
 ## Why
 
-Zotero stores PDFs in opaque, key-based folder names. Manually gathering files from a subcollection and uploading them to Gemini Notebook is tedious and error-prone. This tool automates the handoff: browse your collections in Zotero, pick your sources, and push them to Gemini Notebook.
+Zotero stores PDFs in key-based folders that are difficult to find—a _lot_ of folders. Manually gathering files from a subcollection and uploading them to Gemini Notebook is tedious and error-prone. This tool automates the handoff: browse your collections in Zotero, pick your sources, and push them to Gemini Notebook. Or, ask your favorite tool-using agent to do it.
+
+## Getting started
+
+Start with the Zotero plugin, an `.xpi` file you can download to your machine from this link: [latest plugin](https://github.com/peterdresslar/zotero-gemini-notebook/releases/latest/download/zotero-gemini-notebook.xpi). To install the plugin, go to **Tools → Plugins**. In the Plugins window, click the gear and choose **Install Plugin From File...**. More information about Zotero plugins is available [here](https://www.zotero.org/support/plugins/). You may need to restart Zotero once installed.
+
+To check if installation is successful, go to your Tools menu. There should be a new item in the menu called **Gemini Notebook Connector**.
+
+Next, you'll need the Chrome extension that connects Zotero to Gemini Notebook. To get the extension, go to the Gemini Notebook Connector menu and click **Install Chrome Extension**. If that menu item is unavailable, install it directly from the [Chrome Web Store](https://chrome.google.com/webstore/detail/pcjiogpdekoojnbfdcfcfjnbdojcofhp).
 
 ## How It Works
 
@@ -28,84 +34,40 @@ The system has three parts:
 
 1. **Zotero Plugin**: Adds a **Gemini Notebook Connector** submenu to Zotero's Tools menu. Browse your collection tree, search/filter items, and select which sources to stage. The plugin registers endpoints on Zotero's local HTTP server. The Chrome companion connects through `127.0.0.1`, and file requests are rejected unless the attachment was explicitly staged.
 
-2. **Chrome Extension**: Connects to the Zotero plugin's local server, fetches the staged files, and uploads them into Gemini Notebook. Google Chrome is required; Firefox and other browsers are not supported.
+2. **Chrome Extension**: Connects to the Zotero plugin's local server, fetches the staged files, and uploads them into Gemini Notebook. Google Chrome is required; Firefox and other browsers are not supported. More information about the Chrome extension is available on its [Chrome Web Store page](https://chrome.google.com/webstore/detail/pcjiogpdekoojnbfdcfcfjnbdojcofhp).
 
-3. **MCP**: An optional interface for your preferred AI client to interact with your Zotero articles and prep them for delivery to Gemini Notebook. This feature is in beta and feedback would be greatly appreciated.
+3. **MCP** _(beta)_: An optional interface for your preferred AI client to interact with your Zotero articles and prep them for delivery to Gemini Notebook. This feature is in beta and feedback would be greatly appreciated.
 
-## Installation
+### Optional: Using the MCP
 
-For normal use, install from the latest GitHub release. You do not need Node.js or pnpm unless you are building from source.
+The optional MCP connection lets your AI assistant queue Zotero sources for a notebook and check on the import from your chat. To find and select articles, your assistant needs another Zotero connection[^zotero-mcp] that can search your library, or Zotero item or collection keys you provide.
 
-### Download
+You could ask:
 
-1. Open the [latest release](https://github.com/peterdresslar/zotero-gemini-notebook/releases/latest).
-2. Download both installable assets:
-   - `zotero-gemini-notebook.xpi`
-   - `zotero-gemini-notebook-chrome-extension.zip`
+> Find articles about eusocial insect behavior, queue them for Gemini Notebook using the connector tool, and prepare an Audio Overview prompt focused on the methods they use and where their findings disagree, keyed to my current research.
 
-3. Unzip the Chrome extension `.zip` somewhere you can keep it. Chrome loads the extension from that folder, so do not delete it after installation.
+In the upcoming release, the `suggest-studio-prompt` tool gives your assistant guidance for drafting roughly 100–200 words around your sources and interests. You can ask for another Studio format, or leave out the prompt for an ordinary import.
 
-### Install the Zotero Plugin
+Once your assistant confirms that the sources are queued:
 
-1. Open Zotero.
-2. Go to **Tools → Plugins**.
-3. Drag the downloaded `.xpi` onto the Plugins window, or use its gear menu and choose **Install Plugin From File...**.
-4. Restart Zotero if prompted.
+1. Open Gemini Notebook in Chrome and click the connector's toolbar icon. Start from the home page for a new notebook, or open the notebook you want to add to.
+2. If you requested a prompt, click **Copy Studio Prompt** before **Import**. A checkmark confirms that the text is on your clipboard.
+3. Click **Import** and follow any upload instructions. After the sources arrive, paste your copied prompt into Studio's instructions and start generation there.
 
-### Install the Chrome Extension
+[^zotero-mcp]: We recommend [zotero-mcp](https://github.com/54yyyu/zotero-mcp) as an MCP companion that can search your library and browse collections.
 
-1. Open `chrome://extensions/` in Chrome.
-2. Enable **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the unzipped Chrome extension folder. It should be the folder that contains `manifest.json`.
-5. Optional: pin **Zotero-Gemini Notebook Connector** to your Chrome toolbar.
+#### Configuring the MCP
 
-Install the Zotero plugin and Chrome companion from the same release. Zotero can update the plugin automatically, but the unpacked Chrome companion does not update itself: replace its files, click **Reload** on `chrome://extensions/`, and refresh open Gemini Notebook tabs. If the popup reports a version mismatch, update the component it identifies.
-
-### Optional: Configure the MCP
-
-The optional MCP beta stays off until you configure it. It lets a supported AI client check the connector's status, queue supported Zotero attachments, and read the resulting handoff state. It does not search or rank your Zotero library on its own, inspect attachment contents, create a Gemini Notebook, or upload files without the Chrome extension.
+MCP is in beta and stays off until you configure it.
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.10–3.13, and a supported MCP client. Guided Auto-configure is available for Codex, Claude Code, and Gemini CLI.
 2. In Zotero, open **Tools → Gemini Notebook Connector → Configure MCP...**.
-3. Select your client and press **Auto-configure**. After you confirm, Zotero installs or validates the adapter bundled in the plugin, registers the single MCP server named `zotero-gemini-notebook`, and enables authenticated local MCP access only if setup succeeds.
-4. Restart or reopen the client, then ask it to call `get_zotero_bridge_status`. A working connection reports that the bridge is opted in.
+3. Select your client, press **Auto-configure**, and confirm. Zotero sets up the connection; the first setup may download Python packages.
+4. Restart or reopen your client, then ask it to check the Zotero bridge connection using `get_zotero_bridge_status`.
 
-The staging tool accepts stable Zotero item or collection keys supplied by the client. Use another Zotero-aware interface to discover and select sources, or provide keys you already know. After the client queues a job, finish the normal browser handoff in [Step 2: Import into Gemini Notebook](#step-2-import-into-gemini-notebook). Opening the Chrome import from an existing notebook adds the sources there; starting from the Gemini Notebook home page creates a new notebook.
+Auto-configure requires the software in step 1 to be installed already. Claude Desktop automatic setup is not available yet; **Advanced** provides manual connection settings for other clients.
 
-On this development branch, you can also ask your AI client to prepare a Studio prompt for an Audio Overview or another requested format. The `suggest-studio-prompt` tool supplies guidance for drafting roughly 100–200 words around your interests and chosen sources; the client can include the draft as `studio_prompt` when staging. When a prompt is present, the Chrome popup shows **Copy Studio Prompt**. Copy it before clicking **Import**; a checkmark confirms that it reached your clipboard. After importing, paste it into the appropriate Studio instructions and start generation yourself. The prompt is optional and is not uploaded as a source; it is available in the popup only while its source job is staged.
-
-Auto-configure does not install the AI client, `uv`, or Python. Its first preflight may download the adapter's pinned Python packages into uv's isolated cache. Re-running Auto-configure asks for confirmation and replaces only the `zotero-gemini-notebook` registration; it does not reset other MCP servers. Claude Desktop automatic setup is not available in this beta, and its Desktop Extension (`.mcpb`) integration is deferred to a later milestone; **Advanced** provides the manual STDIO settings for developers and custom clients.
-
-### Source Build
-
-Use this path only if you want to build the project locally.
-
-Prerequisites:
-
-- Node.js 22+
-- pnpm
-- Git
-- Zotero 7 through 10. Zotero 9 and 10 are actively tested; support for Zotero 7 and 8 is best-effort.
-- Google Chrome (required for the companion extension)
-
-From the repository root:
-
-```bash
-pnpm install --frozen-lockfile
-pnpm run package:release
-```
-
-The generated install files are:
-
-```text
-.scaffold/build/zotero-gemini-notebook.xpi
-.scaffold/build/zotero-gemini-notebook-chrome-extension.zip
-```
-
-Install those files using the same Zotero and Chrome steps above.
-
-## Usage
+## Detailed Usage
 
 ### Step 1: Stage Sources in Zotero
 
@@ -134,9 +96,33 @@ For collection browsing, searching, or more deliberate selection:
 - You can deselect items in the Chrome popup if you change your mind
 - If an MCP import fails or times out, check the notebook's Sources panel first. If anything is missing, restage the sources before starting a new import.
 
-## Development
+## Source Build
 
-During Chrome-extension development, you can load `chrome-extension/` directly in `chrome://extensions/` and click **Reload** after editing extension files.
+Use this path only if you want to build the project locally.
+
+Prerequisites:
+
+- Node.js 22+
+- pnpm
+- Git
+- Zotero 7 through 10. Zotero 9 and 10 are actively tested; support for Zotero 7 and 8 is best-effort.
+- Google Chrome (required for the companion extension)
+
+From the repository root:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run package:release
+```
+
+The generated install files are:
+
+```text
+.scaffold/build/zotero-gemini-notebook.xpi
+.scaffold/build/zotero-gemini-notebook-chrome-extension.zip
+```
+
+Install the `.xpi` through Zotero's Plugins window as described above. For Chrome, unzip the extension package, open `chrome://extensions/`, enable **Developer mode**, click **Load unpacked**, and select the folder containing `manifest.json`.
 
 ## Known Issues
 
