@@ -28,14 +28,21 @@ let selectedIds = new Set();
 let companionCompatible = false;
 let stagedJobId = null;
 let stagedDestination = null;
+let studioPrompt = null;
+let studioPromptRevision = 0;
+let pendingLoadRevision = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   loadPending();
   document.getElementById("refresh-btn").addEventListener("click", loadPending);
   document.getElementById("import-btn").addEventListener("click", doImport);
+  document
+    .getElementById("copy-studio-prompt-btn")
+    .addEventListener("click", copyStudioPrompt);
 });
 
 async function loadPending() {
+  const loadRevision = ++pendingLoadRevision;
   const dot = document.getElementById("zotero-dot");
   const statusText = document.getElementById("zotero-status");
   const emptyState = document.getElementById("empty-state");
@@ -45,6 +52,7 @@ async function loadPending() {
   companionCompatible = false;
   stagedJobId = null;
   stagedDestination = null;
+  setStudioPrompt(null);
   updateImportBtn();
 
   try {
@@ -53,6 +61,7 @@ async function loadPending() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    if (loadRevision !== pendingLoadRevision) return;
     const installedVersion = chrome.runtime.getManifest().version;
 
     const compatibility = classifyChromeCompanionCompatibility(
@@ -72,6 +81,7 @@ async function loadPending() {
     stagedJobId =
       typeof data.jobId === "string" && data.jobId ? data.jobId : null;
     stagedDestination = stagedJobId ? readDestination(data.destination) : null;
+    setStudioPrompt(stagedJobId ? readStudioPrompt(data.studioPrompt) : null);
     selectedIds = new Set(stagedItems.map((i) => i.attachmentId));
 
     if (stagedItems.length === 0) {
@@ -88,10 +98,12 @@ async function loadPending() {
     }
     updateImportBtn();
   } catch {
+    if (loadRevision !== pendingLoadRevision) return;
     companionCompatible = false;
     stagedItems = [];
     stagedJobId = null;
     stagedDestination = null;
+    setStudioPrompt(null);
     selectedIds.clear();
     dot.className = "status-dot error";
     statusText.textContent = "Cannot reach Zotero — is it running?";
@@ -138,8 +150,62 @@ function showIncompatibleCompanionWarning(compatibility, installedVersion) {
   companionCompatible = false;
   stagedItems = [];
   stagedJobId = null;
+  setStudioPrompt(null);
   selectedIds.clear();
   updateImportBtn();
+}
+
+function readStudioPrompt(value) {
+  if (
+    typeof value !== "string" ||
+    !value.trim() ||
+    // eslint-disable-next-line no-control-regex -- Reject non-text controls and unpaired surrogates.
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ud800-\udfff]/u.test(
+      value,
+    ) ||
+    new globalThis.TextEncoder().encode(value).byteLength > 4000
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function setStudioPrompt(value) {
+  studioPrompt = value;
+  studioPromptRevision += 1;
+  document.getElementById("studio-prompt").hidden = !value;
+  document.getElementById("copy-studio-prompt-btn").disabled = !value;
+  document.getElementById("studio-prompt-copied").hidden = true;
+  document.getElementById("studio-prompt-status").textContent = "";
+}
+
+async function copyStudioPrompt() {
+  if (!studioPrompt) return;
+  const prompt = studioPrompt;
+  const revision = studioPromptRevision;
+  const button = document.getElementById("copy-studio-prompt-btn");
+  const copied = document.getElementById("studio-prompt-copied");
+  const status = document.getElementById("studio-prompt-status");
+
+  button.disabled = true;
+  copied.hidden = true;
+  status.textContent = "";
+  try {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (typeof clipboard?.writeText !== "function") {
+      throw new Error("Clipboard unavailable");
+    }
+    await clipboard.writeText(prompt);
+    if (revision !== studioPromptRevision) return;
+    copied.hidden = false;
+    status.textContent = "Copied — ready to paste.";
+  } catch {
+    if (revision !== studioPromptRevision) return;
+    status.textContent =
+      "Could not copy. Keep this popup open and click Copy Studio Prompt to try again.";
+  } finally {
+    if (revision === studioPromptRevision) button.disabled = false;
+  }
 }
 
 function renderItems() {

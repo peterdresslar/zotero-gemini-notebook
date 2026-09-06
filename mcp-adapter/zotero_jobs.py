@@ -45,11 +45,17 @@ CONTROL_JOB_STATUS_CONTENT_TYPE = (
     "application/vnd.zotero-gemini-notebook.job-status+json"
 )
 MAX_JOB_BODY_BYTES = 16 * 1024
+MAX_STUDIO_PROMPT_BYTES = 4000
 MAX_JOB_STATUS_BODY_BYTES = 256
 MAX_JOB_RESPONSE_BYTES = 16 * 1024
 
 _SAFE_INTEGER_MAX = 2**53 - 1
 MAX_ITEM_KEYS = 256
+# Match JavaScript String.trim() for the Zotero and Chrome validation boundary.
+_STUDIO_PROMPT_WHITESPACE = (
+    "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005"
+    "\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
 _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 _ZOTERO_KEY_PATTERN = re.compile(r"[A-Za-z0-9]{8}\Z")
 _JOB_ID_PATTERN = re.compile(
@@ -339,6 +345,7 @@ def stage_zotero_import_job(
     item_keys: list[str] | None = None,
     collection_key: str | None = None,
     recursive: bool = False,
+    studio_prompt: str | None = None,
 ) -> ZoteroImportJobResult:
     """Validate, authenticate, and stage one idempotent import job."""
 
@@ -349,6 +356,7 @@ def stage_zotero_import_job(
             item_keys=item_keys,
             collection_key=collection_key,
             recursive=recursive,
+            studio_prompt=studio_prompt,
         )
     except InvalidZoteroJobInput:
         return create_job_failure("invalid_request")
@@ -557,6 +565,7 @@ def create_stage_job_body(
     item_keys: list[str] | None = None,
     collection_key: str | None = None,
     recursive: bool = False,
+    studio_prompt: str | None = None,
 ) -> bytes:
     """Build the exact compact, sort-key canonical job request body."""
 
@@ -589,6 +598,26 @@ def create_stage_job_body(
         "replace": False,
         "requestId": request_id,
     }
+    if studio_prompt is not None:
+        if type(studio_prompt) is not str or not studio_prompt.strip(
+            _STUDIO_PROMPT_WHITESPACE
+        ):
+            raise InvalidZoteroJobInput("studio_prompt must be nonblank text")
+        if any(
+            (ord(character) < 32 and character not in "\t\n\r")
+            or ord(character) == 127
+            for character in studio_prompt
+        ):
+            raise InvalidZoteroJobInput(
+                "studio_prompt contains unsupported control characters"
+            )
+        try:
+            prompt_size = len(studio_prompt.encode("utf-8"))
+        except UnicodeError:
+            raise InvalidZoteroJobInput("studio_prompt must be valid Unicode") from None
+        if prompt_size > MAX_STUDIO_PROMPT_BYTES:
+            raise InvalidZoteroJobInput("studio_prompt is too large")
+        document["studioPrompt"] = studio_prompt
     if has_item_keys:
         if recursive:
             raise InvalidZoteroJobInput(

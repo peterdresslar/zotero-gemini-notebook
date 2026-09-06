@@ -47,6 +47,7 @@ interface CreateBridgeJobBase {
   destination: "active-or-new";
   requestId?: string;
   replace?: boolean;
+  studioPrompt?: string;
 }
 
 export interface CreateBridgeJobFromItemsInput extends CreateBridgeJobBase {
@@ -72,6 +73,7 @@ export interface PendingResponse {
   compatibleChromeExtensionVersions: string[];
   jobId: string | null;
   destination: ChromeUploadDestination | null;
+  studioPrompt?: string;
 }
 
 export interface StatusResponse {

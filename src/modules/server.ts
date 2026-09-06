@@ -1,6 +1,7 @@
 import { companionCompatibility, config, version } from "../../package.json";
 import {
   getStagedItems,
+  getStagedStudioPrompt,
   getStagedCount,
   getStagedTimestamp,
   getCurrentStagedJob,
@@ -99,6 +100,9 @@ export function registerEndpoints() {
     supportedDataTypes: ["application/json"],
     init: function (_data: any, sendResponseCallback: Function) {
       const activeJob = getCurrentStagedJob();
+      const studioPrompt = activeJob
+        ? getStagedStudioPrompt(activeJob.jobId)
+        : undefined;
       const response: PendingResponse = {
         items: getStagedItems(),
         count: getStagedCount(),
@@ -106,6 +110,7 @@ export function registerEndpoints() {
         compatibleChromeExtensionVersions: companionCompatibility.validVersions,
         jobId: activeJob?.jobId ?? null,
         destination: readPendingDestination(activeJob),
+        ...(studioPrompt === undefined ? {} : { studioPrompt }),
       };
       sendJSON(sendResponseCallback, 200, response);
     },

@@ -59,6 +59,7 @@ export async function createJob(
       origin: "agent",
       source,
       destination: request.destination,
+      studioPrompt: request.studioPrompt,
     });
     if (existing) return existing;
   }
@@ -90,6 +91,7 @@ export async function createJob(
     origin: "agent",
     source,
     destination: request.destination,
+    studioPrompt: request.studioPrompt,
     skippedCount,
     requestId,
     replaceExisting: request.replace,

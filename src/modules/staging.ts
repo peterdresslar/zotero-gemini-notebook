@@ -29,6 +29,10 @@ export function getStagedItems(): StagedItem[] {
   return bridgeJobStore.getPendingItems();
 }
 
+export function getStagedStudioPrompt(jobId: string): string | undefined {
+  return bridgeJobStore.getPendingStudioPrompt(jobId);
+}
+
 export function getStagedCount(): number {
   return bridgeJobStore.getStagedCount();
 }

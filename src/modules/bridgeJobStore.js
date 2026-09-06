@@ -1,5 +1,7 @@
 /* global Components */
 
+import { normalizeStudioPrompt } from "./bridgeJobInput.js";
+
 const JOB_STATES = new Set([
   "staged",
   "claimed",
@@ -126,6 +128,7 @@ export function createBridgeJobStore(options = {}) {
       origin: activation.origin,
       source: activation.source,
       destination: activation.destination,
+      studioPrompt: activation.studioPrompt,
       items: activation.items,
       itemCount: activation.items.length,
       skippedCount: activation.skippedCount,
@@ -179,6 +182,14 @@ export function createBridgeJobStore(options = {}) {
     expireJobs(readNow(now));
     const pending = getPendingRecord();
     return pending ? cloneItems(pending.items) : [];
+  }
+
+  function getPendingStudioPrompt(expectedJobId) {
+    expireJobs(readNow(now));
+    const pending = getPendingRecord();
+    return pending && pending.jobId === expectedJobId
+      ? pending.studioPrompt
+      : undefined;
   }
 
   function getStagedTimestamp() {
@@ -434,6 +445,7 @@ export function createBridgeJobStore(options = {}) {
     getJob,
     getActiveJob,
     getPendingItems,
+    getPendingStudioPrompt,
     getStagedTimestamp,
     getStagedCount,
     isReady,
@@ -493,6 +505,7 @@ function normalizeActivation(input) {
     origin: input.origin.trim(),
     source: sanitizeJson(input.source, "source"),
     destination: sanitizeJson(input.destination, "destination"),
+    studioPrompt: readStudioPrompt(input.studioPrompt),
     skippedCount: input.skippedCount,
     requestId,
     replaceExisting: input.replaceExisting ?? false,
@@ -504,6 +517,7 @@ function normalizeActivation(input) {
       origin: normalized.origin,
       source: normalized.source,
       destination: normalized.destination,
+      studioPrompt: normalized.studioPrompt,
     }),
   };
 }
@@ -515,6 +529,7 @@ function fingerprintRequestIdentity(identity) {
   if (!isNonemptyString(identity.origin)) {
     throw invalidInput("request identity origin must be a nonempty string");
   }
+  const studioPrompt = readStudioPrompt(identity.studioPrompt);
   return canonicalStringify({
     origin: identity.origin.trim(),
     source: sanitizeJson(identity.source, "request identity source"),
@@ -522,7 +537,16 @@ function fingerprintRequestIdentity(identity) {
       identity.destination,
       "request identity destination",
     ),
+    ...(studioPrompt === undefined ? {} : { studioPrompt }),
   });
+}
+
+function readStudioPrompt(value) {
+  try {
+    return normalizeStudioPrompt(value);
+  } catch {
+    throw invalidInput("studioPrompt must be bounded nonblank text");
+  }
 }
 
 function normalizeRequestId(value) {

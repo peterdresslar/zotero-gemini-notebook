@@ -179,7 +179,11 @@ def error_document(code: str, *, retryable: bool) -> dict[str, object]:
     }
 
 
-def run_stage(result: object) -> tuple[zotero_jobs.ZoteroImportJobResult, FakeOpener]:
+def run_stage(
+    result: object,
+    *,
+    studio_prompt: str | None = None,
+) -> tuple[zotero_jobs.ZoteroImportJobResult, FakeOpener]:
     opener = FakeOpener(result)
     with (
         patch.object(
@@ -204,6 +208,7 @@ def run_stage(result: object) -> tuple[zotero_jobs.ZoteroImportJobResult, FakeOp
             request_id="request-1",
             library_id=1,
             item_keys=["BBBB2222", "aaaa1111"],
+            studio_prompt=studio_prompt,
         )
     return response, opener
 
@@ -234,6 +239,87 @@ class JobInputTests(unittest.TestCase):
             b'"libraryID":3,"recursive":true,"replace":false,'
             b'"requestId":"collection-request"}',
         )
+
+    def test_preserves_optional_prompt_in_ascii_canonical_body(self) -> None:
+        prompt = '  Discuss caf\u00e9 and \U0001f41d.\n\t"Sources"\r\n'
+        body = create_stage_job_body(
+            request_id="request-1",
+            library_id=1,
+            item_keys=["AAAA1111"],
+            studio_prompt=prompt,
+        )
+        self.assertEqual(
+            body,
+            b'{"destination":"active-or-new","itemKeys":["AAAA1111"],'
+            b'"libraryID":1,"replace":false,"requestId":"request-1",'
+            b'"studioPrompt":"  Discuss caf\\u00e9 and \\ud83d\\udc1d.'
+            b'\\n\\t\\"Sources\\"\\r\\n"}',
+        )
+        self.assertEqual(json.loads(body)["studioPrompt"], prompt)
+
+        without_prompt = create_stage_job_body(
+            request_id="request-1",
+            library_id=1,
+            item_keys=["AAAA1111"],
+        )
+        self.assertEqual(
+            create_stage_job_body(
+                request_id="request-1",
+                library_id=1,
+                item_keys=["AAAA1111"],
+                studio_prompt=None,
+            ),
+            without_prompt,
+        )
+        self.assertNotIn("studioPrompt", json.loads(without_prompt))
+
+    def test_prompt_size_uses_utf8_bytes_and_retains_body_limit(self) -> None:
+        for prompt in ("a" * 4000, "\U0001f41d" * 1000, "\u0080" * 2000):
+            with self.subTest(prompt_start=prompt[:1]):
+                body = create_stage_job_body(
+                    request_id="x" * 128,
+                    library_id=2**53 - 1,
+                    item_keys=[f"{index:08X}" for index in range(256)],
+                    studio_prompt=prompt,
+                )
+                self.assertEqual(json.loads(body)["studioPrompt"], prompt)
+                self.assertLessEqual(len(body), MAX_JOB_BODY_BYTES)
+                with patch.object(zotero_jobs, "MAX_JOB_BODY_BYTES", len(body) - 1):
+                    with self.assertRaises(InvalidZoteroJobInput):
+                        create_stage_job_body(
+                            request_id="x" * 128,
+                            library_id=2**53 - 1,
+                            item_keys=[f"{index:08X}" for index in range(256)],
+                            studio_prompt=prompt,
+                        )
+
+    def test_rejects_blank_oversized_invalid_unicode_and_control_prompts(self) -> None:
+        invalid = [
+            "",
+            " \t\r\n",
+            "\u00a0\u2003\ufeff",
+            12,
+            True,
+            ["a prompt"],
+            "a" * 4001,
+            "\U0001f41d" * 1001,
+            "\ud800",
+            "prefix \udc00 suffix",
+        ]
+        invalid.extend(
+            "text" + chr(value)
+            for value in (*range(32), 127)
+            if value not in (9, 10, 13)
+        )
+        for prompt in invalid:
+            with self.subTest(prompt=repr(prompt)[:50]):
+                with self.assertRaises(InvalidZoteroJobInput):
+                    create_stage_job_body(
+                        request_id="request-1",
+                        library_id=1,
+                        collection_key="AAAA1111",
+                        studio_prompt=prompt,  # type: ignore[arg-type]
+                    )
 
     def test_rejects_missing_ambiguous_and_invalid_selectors(self) -> None:
         base = {"request_id": "request-1", "library_id": 1}
@@ -453,6 +539,7 @@ class JobResponseTests(unittest.TestCase):
         ]
         job_variants = (
             {"source": {"itemKeys": ["PRIVATE1"]}},
+            {"studioPrompt": "Private user interests"},
             {"jobId": "not-an-opaque-job-id"},
             {"state": "complete"},
             {"itemCount": 0},
@@ -473,6 +560,35 @@ class JobResponseTests(unittest.TestCase):
 
 
 class JobControlFlowTests(unittest.TestCase):
+    def test_rejects_invalid_prompt_before_authentication(self) -> None:
+        with patch.object(
+            zotero_jobs,
+            "check_zotero_control_authentication",
+            side_effect=AssertionError("must not authenticate invalid input"),
+        ) as authenticate:
+            result = stage_zotero_import_job(
+                request_id="request-1",
+                library_id=1,
+                item_keys=["AAAA1111"],
+                studio_prompt="private prompt\x00",
+            )
+        authenticate.assert_not_called()
+        self.assertEqual(result.status, "invalid_request")
+        self.assertNotIn("private prompt", repr(result))
+
+    def test_forwards_prompt_only_in_authenticated_job_request(self) -> None:
+        prompt = "  Explore caf\u00e9 studies.\nConnect to the user's interests."
+        body = encode_document(job_document())
+        result, opener = run_stage(
+            FakeResponse(body=body, signature=response_signature(body)),
+            studio_prompt=prompt,
+        )
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(len(opener.requests), 1)
+        self.assertEqual(json.loads(opener.requests[0].data)["studioPrompt"], prompt)
+        self.assertNotIn(prompt, repr(result))
+        self.assertNotIn("studioPrompt", result.__dataclass_fields__)
+
     def test_never_sends_stable_identifiers_when_preflight_is_not_authenticated(
         self,
     ) -> None:

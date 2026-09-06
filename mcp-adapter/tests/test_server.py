@@ -142,6 +142,54 @@ class StaticServerSourceTests(unittest.TestCase):
 
 
 class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_studio_tool_returns_drafting_guidance_without_private_reads(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                server,
+                "read_zotero_bridge_status",
+                side_effect=AssertionError("must not inspect Zotero"),
+            ) as read_status,
+            patch.object(
+                server,
+                "stage_zotero_import_job_request",
+                side_effect=AssertionError("must not stage sources"),
+            ) as stage_request,
+        ):
+            async with Client(server.mcp) as client:
+                tools = await client.list_tools()
+                tool = next(
+                    candidate for candidate in tools
+                    if candidate.name == "suggest-studio-prompt"
+                )
+                result = await client.call_tool("suggest-studio-prompt", {})
+
+        self.assertIs(tool.annotations.readOnlyHint, True)
+        self.assertIs(tool.annotations.destructiveHint, False)
+        self.assertIs(tool.annotations.idempotentHint, True)
+        self.assertIs(tool.annotations.openWorldHint, False)
+        self.assertEqual(tool.inputSchema.get("properties"), {})
+        self.assertFalse(result.is_error)
+        guidance = result.content[0].text
+        for instruction in (
+            "calling assistant",
+            "100-200 words",
+            "Audio Overview when no format was specified",
+            "stated or known interests",
+            "source context already available",
+            "Do not invent",
+            "ground claims in the uploaded sources",
+            "optional studio_prompt",
+            "4000 UTF-8 bytes",
+            "Copy Studio Prompt",
+            "manually pastes",
+            "Copying does not confirm a paste or generated media",
+        ):
+            self.assertIn(instruction, guidance)
+        read_status.assert_not_called()
+        stage_request.assert_not_called()
+
     async def test_discovers_annotated_status_tool_and_calls_it(self) -> None:
         fixed_status = ZoteroBridgeStatus(
             status="opted_in",
@@ -250,6 +298,7 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
                 "item_keys",
                 "collection_key",
                 "recursive",
+                "studio_prompt",
             },
         )
         self.assertEqual(
@@ -264,7 +313,37 @@ class InMemoryServerTests(unittest.IsolatedAsyncioTestCase):
             item_keys=["AAAA1111"],
             collection_key=None,
             recursive=False,
+            studio_prompt=None,
         )
+
+    async def test_staging_tool_forwards_optional_prompt_without_echoing_it(self) -> None:
+        prompt = "  Focus on caf\u00e9 research.\nDiscuss uncertainty."
+        with patch.object(
+            server,
+            "stage_zotero_import_job_request",
+            return_value=ZoteroImportJobResult(**EXPECTED_JOB),
+        ) as stage_request:
+            async with Client(server.mcp) as client:
+                result = await client.call_tool(
+                    "stage_zotero_import_job",
+                    {
+                        "request_id": "request-1",
+                        "library_id": 1,
+                        "item_keys": ["AAAA1111"],
+                        "studio_prompt": prompt,
+                    },
+                )
+        stage_request.assert_called_once_with(
+            request_id="request-1",
+            library_id=1,
+            item_keys=["AAAA1111"],
+            collection_key=None,
+            recursive=False,
+            studio_prompt=prompt,
+        )
+        self.assertFalse(result.is_error)
+        self.assertEqual(result.structured_content, EXPECTED_JOB)
+        self.assertNotIn(prompt, repr(result))
 
     async def test_discovers_read_only_job_status_tool_and_calls_it(self) -> None:
         fixed_job = ZoteroImportJobStatusResult(
@@ -481,6 +560,7 @@ class StdioServerTests(unittest.IsolatedAsyncioTestCase):
                 "get_zotero_bridge_status",
                 "stage_zotero_import_job",
                 "get_zotero_import_job",
+                "suggest-studio-prompt",
             },
         )
         self.assertFalse(bridge_result.is_error)

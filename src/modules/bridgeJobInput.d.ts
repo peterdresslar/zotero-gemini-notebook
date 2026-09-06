@@ -3,7 +3,11 @@ interface NormalizedBridgeJobBase {
   destination: "active-or-new";
   requestId?: string;
   replace: boolean;
+  studioPrompt?: string;
 }
+
+export const MAX_STUDIO_PROMPT_BYTES: 4000;
+export function normalizeStudioPrompt(value: unknown): string | undefined;
 
 export interface NormalizedBridgeJobFromItems extends NormalizedBridgeJobBase {
   readonly itemKeys: readonly string[];

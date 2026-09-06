@@ -19,12 +19,14 @@ export interface BridgeJobActivation {
   requestId?: string;
   replaceExisting?: boolean;
   expiresAt?: number | null;
+  studioPrompt?: string;
 }
 
 export interface BridgeJobRequestIdentity {
   origin: string;
   source: BridgeJobJson;
   destination: BridgeJobJson;
+  studioPrompt?: string;
 }
 
 export interface BridgeJobSnapshot {
@@ -80,6 +82,7 @@ export interface BridgeJobStore {
   getJob(jobId: string): BridgeJobSnapshot | null;
   getActiveJob(): BridgeJobSnapshot | null;
   getPendingItems(): StagedItem[];
+  getPendingStudioPrompt(expectedJobId: string): string | undefined;
   getStagedTimestamp(): number | null;
   getStagedCount(): number;
   isReady(): boolean;
