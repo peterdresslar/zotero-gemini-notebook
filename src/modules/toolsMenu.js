@@ -7,6 +7,7 @@ export const CONNECTOR_TOOLS_MENU_IDS = Object.freeze({
   popup: "zotero-notebooklm-menu-connector-popup",
   exportItem: "zotero-notebooklm-menu-export",
   configureMcpItem: "zotero-notebooklm-menu-configure-mcp",
+  installChromeExtensionItem: "zotero-notebooklm-menu-install-chrome-extension",
 });
 
 export function registerConnectorToolsMenuWithManager(
@@ -16,8 +17,10 @@ export function registerConnectorToolsMenuWithManager(
     connectorLabel,
     exportLabel,
     configureMcpLabel,
+    installChromeExtensionLabel,
     onExport,
     onConfigureMcp,
+    onInstallChromeExtension,
   },
 ) {
   if (
@@ -59,6 +62,13 @@ export function registerConnectorToolsMenuWithManager(
               if (ownerWindow) onConfigureMcp(ownerWindow);
             },
           },
+          {
+            menuType: "menuitem",
+            onShowing: (_event, context) => {
+              setManagedMenuLabel(context, installChromeExtensionLabel);
+            },
+            onCommand: () => onInstallChromeExtension(),
+          },
         ],
       },
     ],
@@ -76,7 +86,15 @@ export function registerConnectorToolsMenuWithManager(
 
 export function createConnectorToolsMenu(
   document,
-  { connectorLabel, exportLabel, configureMcpLabel, onExport, onConfigureMcp },
+  {
+    connectorLabel,
+    exportLabel,
+    configureMcpLabel,
+    installChromeExtensionLabel,
+    onExport,
+    onConfigureMcp,
+    onInstallChromeExtension,
+  },
 ) {
   const connectorMenu = createXulElement(document, "menu");
   setMenuAttributes(
@@ -104,7 +122,22 @@ export function createConnectorToolsMenu(
   );
   configureMcpMenuItem.addEventListener("command", onConfigureMcp);
 
-  connectorPopup.append(exportMenuItem, configureMcpMenuItem);
+  const installChromeExtensionMenuItem = createXulElement(document, "menuitem");
+  setMenuAttributes(
+    installChromeExtensionMenuItem,
+    CONNECTOR_TOOLS_MENU_IDS.installChromeExtensionItem,
+    installChromeExtensionLabel,
+  );
+  installChromeExtensionMenuItem.addEventListener(
+    "command",
+    onInstallChromeExtension,
+  );
+
+  connectorPopup.append(
+    exportMenuItem,
+    configureMcpMenuItem,
+    installChromeExtensionMenuItem,
+  );
   connectorMenu.appendChild(connectorPopup);
   return connectorMenu;
 }

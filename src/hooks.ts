@@ -46,8 +46,12 @@ async function onStartup() {
         connectorLabel: getString("menu-connector-label"),
         exportLabel: getString("menuitem-export-label"),
         configureMcpLabel: getString("menuitem-configure-mcp-label"),
+        installChromeExtensionLabel: getString(
+          "menuitem-install-chrome-extension-label",
+        ),
         onExport: openExportDialog,
         onConfigureMcp: openMcpConfigDialog,
+        onInstallChromeExtension: openChromeExtensionPage,
       },
     );
   } catch {
@@ -105,12 +109,22 @@ function registerToolsMenu(win: _ZoteroTypes.MainWindow): () => void {
     connectorLabel: getString("menu-connector-label"),
     exportLabel: getString("menuitem-export-label"),
     configureMcpLabel: getString("menuitem-configure-mcp-label"),
+    installChromeExtensionLabel: getString(
+      "menuitem-install-chrome-extension-label",
+    ),
     onExport: () => openExportDialog(win),
     onConfigureMcp: () => openMcpConfigDialog(win),
+    onInstallChromeExtension: openChromeExtensionPage,
   });
   toolsPopup.appendChild(connectorMenu);
 
   return () => connectorMenu.remove();
+}
+
+function openChromeExtensionPage(): void {
+  Zotero.launchURL(
+    "https://chromewebstore.google.com/detail/zotero-gemini-notebook-co/pcjiogpdekoojnbfdcfcfjnbdojcofhp",
+  );
 }
 
 function registerItemContextMenu(win: _ZoteroTypes.MainWindow): () => void {

@@ -2,8 +2,10 @@ export interface ConnectorToolsMenuOptions {
   connectorLabel: string;
   exportLabel: string;
   configureMcpLabel: string;
+  installChromeExtensionLabel: string;
   onExport: EventListener;
   onConfigureMcp: EventListener;
+  onInstallChromeExtension: () => void;
 }
 
 export interface ManagedConnectorToolsMenuOptions {
@@ -11,8 +13,10 @@ export interface ManagedConnectorToolsMenuOptions {
   connectorLabel: string;
   exportLabel: string;
   configureMcpLabel: string;
+  installChromeExtensionLabel: string;
   onExport: (ownerWindow: Window) => void;
   onConfigureMcp: (ownerWindow: Window) => void;
+  onInstallChromeExtension: () => void;
 }
 
 export const XUL_NAMESPACE: string;
@@ -22,6 +26,7 @@ export const CONNECTOR_TOOLS_MENU_IDS: Readonly<{
   popup: string;
   exportItem: string;
   configureMcpItem: string;
+  installChromeExtensionItem: string;
 }>;
 
 export function createConnectorToolsMenu(
