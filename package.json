@@ -57,8 +57,15 @@
     "mocha": "^11.7.5",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3",
-    "zotero-plugin-scaffold": "^0.8.2",
+    "zotero-plugin-scaffold": "^0.8.8",
     "zotero-types": "^4.1.0-beta.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "mocha@11>diff": "8.0.3",
+      "mocha@11>serialize-javascript": "7.1.1",
+      "zotero-plugin-scaffold@0.8>adm-zip": "0.6.0"
+    }
   },
   "prettier": {
     "printWidth": 80,
