@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Effective August 27, 2026.
+Effective September 6, 2026.
 
 Zotero Gemini Notebook, including its Chrome extension **Zotero-Gemini Notebook Connector**, has one purpose: moving sources that a user stages in Zotero into a Gemini Notebook chosen by that user. The Zotero plugin and Chrome extension run on the user's computer. The project has no developer-operated server, analytics, advertising, or telemetry.
 
@@ -14,11 +14,15 @@ The connector does not browse arbitrary files, read unstaged Zotero attachments,
 
 Staged information and files travel from the Zotero plugin to the Chrome extension through a fixed local connection on `127.0.0.1`. When the user clicks **Import to Gemini Notebook**, the extension sends the selected files directly to the open Gemini Notebook page so Google can process them as sources. Files may contain personal or sensitive information. Google is the only third party that receives the selected filenames and contents, and that transfer occurs only as part of the user's requested import. Google's handling of the imported sources is governed by the user's agreement with Google and the [Google Privacy Policy](https://policies.google.com/privacy).
 
+An optional Studio prompt supplied by an MCP client travels with the job over the same local connection. Clicking **Copy Studio Prompt** writes that text to the user's clipboard. The connector does not upload it as a source or submit it to Studio; the user chooses where to paste it.
+
 The developer does not receive, collect, sell, rent, analyze, or use Zotero metadata, file contents, Gemini Notebook page content, or browsing activity. The connector does not use this data for advertising, profiling, creditworthiness, or lending, and does not transfer it for any purpose unrelated to the import requested by the user.
 
 ## Storage and retention
 
 The Chrome extension does not use persistent browser storage for source metadata or file contents. It holds staged metadata only while the popup is open and holds file data only while an import is being prepared or attempted. Popup metadata is released when the popup closes; file data is released when the attempt completes, fails, times out, is disarmed, or the extension context ends. Zotero keeps staged information in its process memory until the batch is claimed, replaced, cleared, expires under a job-specific limit, or Zotero closes.
+
+Studio prompt text is available to the popup only while its job is staged. Zotero retains job request information, including any prompt, in its bounded in-memory job history for retry handling. A copied prompt remains on the clipboard under the user's operating system and clipboard settings after the popup closes.
 
 ## User control
 

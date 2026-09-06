@@ -175,10 +175,13 @@ export function canonicalJsonStringify(value) {
     return JSON.stringify(value);
   }
   if (typeof value === "string") {
-    if (!/^[\x20-\x7e]*$/.test(value)) {
-      throw new TypeError("Canonical JSON strings must contain only ASCII");
-    }
-    return JSON.stringify(value);
+    // Match Python json.dumps(ensure_ascii=True), including UTF-16 surrogate
+    // pairs for non-BMP characters. The request schema validates text fields.
+    return JSON.stringify(value).replace(
+      /[\u007f-\uffff]/g,
+      (character) =>
+        `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
   }
   if (Array.isArray(value)) {
     return `[${value.map((entry) => canonicalJsonStringify(entry)).join(",")}]`;

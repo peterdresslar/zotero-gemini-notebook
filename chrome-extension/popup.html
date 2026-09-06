@@ -184,6 +184,25 @@
         background: #e8f0fe;
         border-top: 1px solid #d2e3fc;
       }
+
+      .studio-prompt {
+        padding: 0 16px 12px;
+      }
+      .studio-prompt-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .studio-prompt-copied {
+        color: #188038;
+        font-size: 18px;
+      }
+      .studio-prompt p {
+        margin-top: 6px;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #5f6368;
+      }
     </style>
   </head>
   <body>
@@ -206,6 +225,29 @@
         <p>Checking for staged sources...</p>
       </div>
       <div id="item-list" class="item-list" style="display: none"></div>
+    </div>
+
+    <div id="studio-prompt" class="studio-prompt" hidden>
+      <div class="studio-prompt-actions">
+        <button
+          id="copy-studio-prompt-btn"
+          aria-describedby="studio-prompt-guidance studio-prompt-status"
+          disabled
+        >
+          Copy Studio Prompt
+        </button>
+        <span
+          id="studio-prompt-copied"
+          class="studio-prompt-copied"
+          aria-hidden="true"
+          hidden
+          >✓</span
+        >
+      </div>
+      <p id="studio-prompt-guidance">
+        Copy before importing, then paste into Studio instructions.
+      </p>
+      <p id="studio-prompt-status" role="status" aria-live="polite"></p>
     </div>
 
     <div class="progress" id="progress">

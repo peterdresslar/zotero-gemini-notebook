@@ -7,7 +7,28 @@ const JOB_INPUT_KEYS = new Set([
   "destination",
   "requestId",
   "replace",
+  "studioPrompt",
 ]);
+
+export const MAX_STUDIO_PROMPT_BYTES = 4000;
+
+export function normalizeStudioPrompt(value) {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "string" ||
+    value.trim() === "" ||
+    // eslint-disable-next-line no-control-regex -- Permit text whitespace while rejecting other C0 controls.
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value) ||
+    /[\ud800-\udfff]/u.test(value) ||
+    new globalThis.TextEncoder().encode(value).byteLength >
+      MAX_STUDIO_PROMPT_BYTES
+  ) {
+    throw new TypeError(
+      "studioPrompt must be nonblank text of at most 4000 UTF-8 bytes without unsupported control characters.",
+    );
+  }
+  return value;
+}
 
 export function normalizeCreateBridgeJobInput(input) {
   if (!isPlainObject(input)) {
@@ -52,11 +73,13 @@ export function normalizeCreateBridgeJobInput(input) {
     );
   }
 
+  const studioPrompt = normalizeStudioPrompt(input.studioPrompt);
   const base = {
     libraryID: input.libraryID,
     destination: "active-or-new",
     replace: input.replace ?? false,
     ...(requestId === undefined ? {} : { requestId }),
+    ...(studioPrompt === undefined ? {} : { studioPrompt }),
   };
 
   if (hasItemKeys) {
