@@ -7,5 +7,6 @@ export type FluentMessageId =
   | 'menuitem-configure-mcp-label'
   | 'menuitem-export-label'
   | 'menuitem-export-selected-label'
+  | 'menuitem-install-chrome-extension-label'
   | 'startup-begin'
   | 'startup-finish';

@@ -68,36 +68,52 @@ function createDocumentWithNamespaceFallback() {
 function buildMenu(document) {
   let exportCalls = 0;
   let configureMcpCalls = 0;
+  let installChromeExtensionCalls = 0;
   const menu = createConnectorToolsMenu(document, {
     connectorLabel: "Gemini Notebook Connector",
     exportLabel: "Export to Gemini Notebook...",
     configureMcpLabel: "Configure MCP...",
+    installChromeExtensionLabel: "Install Chrome Extension",
     onExport: () => {
       exportCalls += 1;
     },
     onConfigureMcp: () => {
       configureMcpCalls += 1;
     },
+    onInstallChromeExtension: () => {
+      installChromeExtensionCalls += 1;
+    },
   });
 
   return {
     menu,
-    getCallCounts: () => ({ exportCalls, configureMcpCalls }),
+    getCallCounts: () => ({
+      exportCalls,
+      configureMcpCalls,
+      installChromeExtensionCalls,
+    }),
   };
 }
 
 function assertMenuStructure(menu) {
   const [popup] = menu.children;
-  const [exportItem, configureMcpItem] = popup.children;
-  const elements = [menu, popup, exportItem, configureMcpItem];
+  const [exportItem, configureMcpItem, installChromeExtensionItem] =
+    popup.children;
+  const elements = [
+    menu,
+    popup,
+    exportItem,
+    configureMcpItem,
+    installChromeExtensionItem,
+  ];
 
   assert.deepEqual(
     elements.map((element) => element.namespaceURI),
-    Array(4).fill(XUL_NAMESPACE),
+    Array(5).fill(XUL_NAMESPACE),
   );
   assert.deepEqual(
     elements.map((element) => element.localName),
-    ["menu", "menupopup", "menuitem", "menuitem"],
+    ["menu", "menupopup", "menuitem", "menuitem", "menuitem"],
   );
   assert.deepEqual(
     elements.map((element) => element.getAttribute("id")),
@@ -106,6 +122,7 @@ function assertMenuStructure(menu) {
       CONNECTOR_TOOLS_MENU_IDS.popup,
       CONNECTOR_TOOLS_MENU_IDS.exportItem,
       CONNECTOR_TOOLS_MENU_IDS.configureMcpItem,
+      CONNECTOR_TOOLS_MENU_IDS.installChromeExtensionItem,
     ],
   );
   assert.equal(menu.getAttribute("label"), "Gemini Notebook Connector");
@@ -114,20 +131,43 @@ function assertMenuStructure(menu) {
     "Export to Gemini Notebook...",
   );
   assert.equal(configureMcpItem.getAttribute("label"), "Configure MCP...");
-  assert.equal(popup.children.length, 2);
+  assert.equal(
+    installChromeExtensionItem.getAttribute("label"),
+    "Install Chrome Extension",
+  );
+  assert.equal(popup.children.length, 3);
 
-  return { exportItem, configureMcpItem };
+  return { exportItem, configureMcpItem, installChromeExtensionItem };
 }
 
 test("builds the connector submenu entirely from XUL elements", () => {
   const { menu, getCallCounts } = buildMenu(createDocumentWithXulFactory());
-  const { exportItem, configureMcpItem } = assertMenuStructure(menu);
+  const { exportItem, configureMcpItem, installChromeExtensionItem } =
+    assertMenuStructure(menu);
 
-  assert.deepEqual(getCallCounts(), { exportCalls: 0, configureMcpCalls: 0 });
+  assert.deepEqual(getCallCounts(), {
+    exportCalls: 0,
+    configureMcpCalls: 0,
+    installChromeExtensionCalls: 0,
+  });
   exportItem.dispatch("command");
-  assert.deepEqual(getCallCounts(), { exportCalls: 1, configureMcpCalls: 0 });
+  assert.deepEqual(getCallCounts(), {
+    exportCalls: 1,
+    configureMcpCalls: 0,
+    installChromeExtensionCalls: 0,
+  });
   configureMcpItem.dispatch("command");
-  assert.deepEqual(getCallCounts(), { exportCalls: 1, configureMcpCalls: 1 });
+  assert.deepEqual(getCallCounts(), {
+    exportCalls: 1,
+    configureMcpCalls: 1,
+    installChromeExtensionCalls: 0,
+  });
+  installChromeExtensionItem.dispatch("command");
+  assert.deepEqual(getCallCounts(), {
+    exportCalls: 1,
+    configureMcpCalls: 1,
+    installChromeExtensionCalls: 1,
+  });
 });
 
 test("uses the exact XUL namespace when createXULElement is unavailable", () => {
@@ -161,14 +201,19 @@ test("registers the native Tools submenu through Zotero MenuManager", () => {
   };
   const exportWindows = [];
   const configureMcpWindows = [];
+  let installChromeExtensionCalls = 0;
 
   const cleanup = registerConnectorToolsMenuWithManager(menuManager, {
     pluginID: "plugin@example.com",
     connectorLabel: "Gemini Notebook Connector",
     exportLabel: "Export to Gemini Notebook...",
     configureMcpLabel: "Configure MCP...",
+    installChromeExtensionLabel: "Install Chrome Extension",
     onExport: (win) => exportWindows.push(win),
     onConfigureMcp: (win) => configureMcpWindows.push(win),
+    onInstallChromeExtension: () => {
+      installChromeExtensionCalls += 1;
+    },
   });
 
   assert.equal(typeof cleanup, "function");
@@ -179,25 +224,37 @@ test("registers the native Tools submenu through Zotero MenuManager", () => {
   assert.equal(registration.target, "main/menubar/tools");
 
   const [submenu] = registration.menus;
-  const [exportItem, configureMcpItem] = submenu.menus;
+  const [exportItem, configureMcpItem, installChromeExtensionItem] =
+    submenu.menus;
+  assert.equal(submenu.menus.length, 3);
   assert.deepEqual(
-    [submenu.menuType, exportItem.menuType, configureMcpItem.menuType],
-    ["submenu", "menuitem", "menuitem"],
+    [
+      submenu.menuType,
+      exportItem.menuType,
+      configureMcpItem.menuType,
+      installChromeExtensionItem.menuType,
+    ],
+    ["submenu", "menuitem", "menuitem", "menuitem"],
   );
 
   submenu.onShowing({}, context);
   exportItem.onShowing({}, context);
   configureMcpItem.onShowing({}, context);
+  installChromeExtensionItem.onShowing({}, context);
   assert.deepEqual(labels, [
     ["label", "Gemini Notebook Connector"],
     ["label", "Export to Gemini Notebook..."],
     ["label", "Configure MCP..."],
+    ["label", "Install Chrome Extension"],
   ]);
 
   exportItem.onCommand({}, context);
   configureMcpItem.onCommand({}, context);
   assert.deepEqual(exportWindows, [ownerWindow]);
   assert.deepEqual(configureMcpWindows, [ownerWindow]);
+  assert.equal(installChromeExtensionCalls, 0);
+  installChromeExtensionItem.onCommand();
+  assert.equal(installChromeExtensionCalls, 1);
 
   cleanup();
   cleanup();
@@ -210,8 +267,10 @@ test("falls back when Zotero MenuManager is unavailable or rejects registration"
     connectorLabel: "Gemini Notebook Connector",
     exportLabel: "Export to Gemini Notebook...",
     configureMcpLabel: "Configure MCP...",
+    installChromeExtensionLabel: "Install Chrome Extension",
     onExport: () => {},
     onConfigureMcp: () => {},
+    onInstallChromeExtension: () => {},
   };
 
   assert.equal(registerConnectorToolsMenuWithManager(undefined, options), null);
