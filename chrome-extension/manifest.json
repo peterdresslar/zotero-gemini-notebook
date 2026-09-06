@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Zotero-Gemini Notebook Connector",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Import staged Zotero sources into Gemini Notebook",
   "host_permissions": [
     "http://127.0.0.1:23119/*",

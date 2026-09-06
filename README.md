@@ -45,7 +45,7 @@ You could ask:
 
 > Find articles about eusocial insect behavior, queue them for Gemini Notebook using the connector tool, and prepare an Audio Overview prompt focused on the methods they use and where their findings disagree, keyed to my current research.
 
-In the upcoming release, the `suggest-studio-prompt` tool gives your assistant guidance for drafting roughly 100–200 words around your sources and interests. You can ask for another Studio format, or leave out the prompt for an ordinary import.
+In v0.5.0, the `suggest-studio-prompt` tool gives your assistant guidance for drafting roughly 100–200 words around your sources and interests. You can ask for another Studio format, or leave out the prompt for an ordinary import.
 
 Once your assistant confirms that the sources are queued:
 

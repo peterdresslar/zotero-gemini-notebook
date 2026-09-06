@@ -40,7 +40,7 @@ We certify that the data handled by the extension is necessary for the stated si
 
 ## Reviewer instructions
 
-1. Download the matching Zotero plugin from https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.4.1/zotero-gemini-notebook.xpi. In Zotero, open **Tools → Plugins**, choose the gear menu, select **Install Add-on From File…**, open the downloaded XPI, and restart Zotero if prompted.
+1. Download the matching Zotero plugin from https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.5.0/zotero-gemini-notebook.xpi. In Zotero, open **Tools → Plugins**, choose the gear menu, select **Install Add-on From File…**, open the downloaded XPI, and restart Zotero if prompted.
 2. In Zotero, select a regular library item with a local PDF, right-click, and choose **Export Selected to Gemini Notebook**.
 3. Sign in to https://notebook.google.com with the reviewer's own Google account and open a disposable notebook, or remain on the home page to create one.
 4. Open the Chrome extension. Confirm that the staged source appears, then click **Import to Gemini Notebook**.
