@@ -159,10 +159,11 @@ function inspectRgbaArtwork(buffer) {
 }
 
 test("pins the Store-facing extension identity and rollout versions", () => {
-  assert.equal(packageJSON.version, "0.4.1");
+  assert.equal(packageJSON.version, "0.5.0");
   assert.deepEqual(packageJSON.companionCompatibility.validVersions, [
     "0.4.0",
     "0.4.1",
+    "0.5.0",
   ]);
   assert.equal(manifest.version, packageJSON.version);
   assert.equal(manifest.name, "Zotero-Gemini Notebook Connector");
@@ -235,7 +236,7 @@ test("keeps Store disclosures aligned with the public privacy policy", () => {
     "requests no general Chrome API permissions",
     "does not load or execute remote code",
     "PRIVACY.md",
-    "releases/download/v0.4.1/zotero-gemini-notebook.xpi",
+    `releases/download/v${packageJSON.version}/zotero-gemini-notebook.xpi`,
   ]) {
     assert.match(listing, new RegExp(requiredListingText, "u"));
   }
