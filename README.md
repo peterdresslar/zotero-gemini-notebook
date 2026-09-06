@@ -4,9 +4,8 @@
 >
 > - The Chrome Extension is now published to the Chrome Store and will auto-upgrade. You can install just by downloading the Zotero plugin and setup from within the upgraded tools menu.
 > - MCP functionality can now include a prompt for Studio creation in Gemini Notebook
->
 
-Want an easier way to build notebooks in Gemini Notebook (formerly NotebookLM) from Zotero files on your computer? This connector lets you browse your Zotero collections, stage source files, and send them to Gemini Notebook without manually digging through Zotero's filesystem.
+Want an easier way to build notebooks in Gemini Notebook from Zotero files on your computer? This connector lets you browse your Zotero collections, stage source files, and send them to Gemini Notebook (formerly NotebookLM) without manually digging through Zotero's filesystem.
 
 While the direct interface with the browser window is tricky to make perfect, we've made an effort to make the upload of Zotero articles to the web as seamless as possible.
 
@@ -67,7 +66,7 @@ MCP is in beta and stays off until you configure it.
 
 Auto-configure requires the software in step 1 to be installed already. Claude Desktop automatic setup is not available yet; **Advanced** provides manual connection settings for other clients.
 
-## Detailed Usage
+## Detailed Connector Usage
 
 ### Step 1: Stage Sources in Zotero
 
