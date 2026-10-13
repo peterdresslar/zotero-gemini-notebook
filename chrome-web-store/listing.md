@@ -10,6 +10,8 @@
 
 Zotero-Gemini Notebook Connector connects Zotero on your computer to Gemini Notebook in Chrome. Stage supported sources in Zotero, review the queue in the extension, and import them into the notebook you already have open or start from Gemini Notebook home to create a new notebook.
 
+On Gemini Notebook tabs, the toolbar icon shows how many files are ready in Zotero: 1–9, then 9+ for larger batches. Version 0.5.1 also improves source-button detection and uploads in German-language Gemini Notebook.
+
 The extension requires the matching Zotero Gemini Notebook plugin, Zotero desktop, Google Chrome, and a signed-in Gemini Notebook account. It supports local PDF, DOCX, Markdown, and text attachments staged by the user. The optional MCP beta is configured in Zotero and is not required for ordinary imports.
 
 Selected files move directly from Zotero on the user's computer to Gemini Notebook after the user clicks Import. The developer does not receive file contents, library metadata, browsing activity, or Gemini Notebook page content, and the extension includes no analytics, advertising, or remote code. See the public privacy policy for the complete data-handling description.
@@ -42,7 +44,7 @@ We certify that the data handled by the extension is necessary for the stated si
 
 ## Reviewer instructions
 
-1. Download the matching Zotero plugin from https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.5.0/zotero-gemini-notebook.xpi. In Zotero, open **Tools → Plugins**, choose the gear menu, select **Install Add-on From File…**, open the downloaded XPI, and restart Zotero if prompted.
+1. Download the matching Zotero plugin from https://github.com/peterdresslar/zotero-gemini-notebook/releases/download/v0.5.1/zotero-gemini-notebook.xpi. In Zotero, open **Tools → Plugins**, choose the gear menu, select **Install Add-on From File…**, open the downloaded XPI, and restart Zotero if prompted.
 2. In Zotero, select a regular library item with a local PDF, right-click, and choose **Export Selected to Gemini Notebook**.
 3. Sign in to https://notebook.google.com with the reviewer's own Google account and open a disposable notebook, or remain on the home page to create one.
 4. Open the Chrome extension. Confirm that the staged source appears, then click **Import to Gemini Notebook**.
@@ -50,3 +52,5 @@ We certify that the data handled by the extension is necessary for the stated si
 6. Confirm that the file appears in the notebook's Sources panel. A `submitted` job state means the file was handed to Google's uploader, so the visible Sources panel is the final manual check.
 
 The optional MCP setup is outside the core Chrome extension review path. Please see the repository for more information, if needed.
+
+To check the badge, pin the extension to the toolbar and stage 1, 9, and 10 or more files in Zotero. On a Gemini Notebook tab, the badge should show 1, 9, and 9+ respectively. It refreshes on tab changes and approximately every 30 seconds while a notebook tab is open. The badge disappears on other websites and when no files are ready or Zotero is unavailable.

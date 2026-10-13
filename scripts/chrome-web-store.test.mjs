@@ -159,11 +159,12 @@ function inspectRgbaArtwork(buffer) {
 }
 
 test("pins the Store-facing extension identity and rollout versions", () => {
-  assert.equal(packageJSON.version, "0.5.0");
+  assert.equal(packageJSON.version, "0.5.1");
   assert.deepEqual(packageJSON.companionCompatibility.validVersions, [
     "0.4.0",
     "0.4.1",
     "0.5.0",
+    "0.5.1",
   ]);
   assert.equal(manifest.version, packageJSON.version);
   assert.equal(manifest.name, "Zotero-Gemini Notebook Connector");

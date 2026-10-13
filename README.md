@@ -1,9 +1,9 @@
 # Zotero → Gemini Notebook
 
-> **:sparkle: New in 0.5.0 :sparkle:**
+> **:sparkle: Preparing 0.5.1 :sparkle:**
 >
-> - The Chrome Extension is now published to the Chrome Store and will auto-upgrade. You can install just by downloading the Zotero plugin and setup from within the upgraded tools menu.
-> - MCP functionality can now include a prompt for Studio creation in Gemini Notebook
+> - A badge on the Chrome extension icon shows how many files are ready in Zotero: `1`–`9`, then `9+`.
+> - Improved source-button detection and uploads in German-language Gemini Notebook. See the [release notes](docs/releases/v0.5.1.md).
 
 Want an easier way to build notebooks in Gemini Notebook from Zotero files on your computer? This connector lets you browse your Zotero collections, stage source files, and send them to Gemini Notebook (formerly NotebookLM) without manually digging through Zotero's filesystem.
 
@@ -86,7 +86,7 @@ For collection browsing, searching, or more deliberate selection:
 2. Click the Zotero-Gemini Notebook Connector icon in your Chrome toolbar
 3. The popup will show your staged sources with a green "Zotero connected" indicator
 4. Click **Import to Gemini Notebook**
-5. If the page highlights **Add sources** or **Upload files**, click that Gemini Notebook button once. Chrome requires a genuine page click before Gemini can expose its file input; you do not need to choose the files.
+5. If the page highlights **Add sources** or **Upload files**, click that Gemini Notebook button once to continue the handoff; you do not need to choose the files.
 6. The extension will fetch each file from Zotero, then hand them to Gemini Notebook's sources panel.
 
 ### Tips
