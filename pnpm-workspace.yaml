@@ -1,0 +1,10 @@
+overrides:
+  mocha@11>diff: 8.0.3
+  mocha@11>serialize-javascript: 7.1.1
+  zotero-plugin-scaffold@0.8>adm-zip: 0.6.0
+
+allowBuilds:
+  "@swc/core": true
+  esbuild: true
+  # This package's postinstall only prints a message; no build is needed.
+  es5-ext: false

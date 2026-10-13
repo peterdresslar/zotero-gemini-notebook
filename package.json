@@ -27,7 +27,10 @@
   },
   "homepage": "https://github.com/peterdresslar/zotero-gemini-notebook#readme",
   "license": "MIT",
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "zotero-plugin serve",
     "build": "zotero-plugin build && tsc --noEmit",
@@ -60,13 +63,6 @@
     "typescript": "^5.9.3",
     "zotero-plugin-scaffold": "^0.8.8",
     "zotero-types": "^4.1.0-beta.4"
-  },
-  "pnpm": {
-    "overrides": {
-      "mocha@11>diff": "8.0.3",
-      "mocha@11>serialize-javascript": "7.1.1",
-      "zotero-plugin-scaffold@0.8>adm-zip": "0.6.0"
-    }
   },
   "prettier": {
     "printWidth": 80,
