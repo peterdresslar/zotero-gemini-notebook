@@ -233,7 +233,8 @@ test("keeps Store disclosures aligned with the public privacy policy", () => {
 
   for (const requiredListingText of [
     "Transfer sources explicitly staged by the user",
-    "requests no general Chrome API permissions",
+    "`alarms` permission refreshes the ready-file count badge",
+    "requests no other Chrome API permissions",
     "does not load or execute remote code",
     "PRIVACY.md",
     `releases/download/v${packageJSON.version}/zotero-gemini-notebook.xpi`,

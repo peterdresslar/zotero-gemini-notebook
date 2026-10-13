@@ -62,6 +62,7 @@ const compatibility = {
 const chromeManifest = {
   name: "Zotero-Gemini Notebook Connector",
   version: "0.4.1",
+  permissions: ["alarms"],
   host_permissions: [
     "http://127.0.0.1:23119/*",
     "https://notebook.google.com/*",
@@ -123,6 +124,7 @@ const chromePackageEntries = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  "ready-badge.js",
   "source-verification.js",
   "upload-transfer.js",
   "upload-handoff.js",
@@ -449,6 +451,7 @@ test("Chrome runtime package rejects missing content helpers", () => {
     "bridge-requests.js",
     "gemini-controls.js",
     "job-lifecycle.js",
+    "ready-badge.js",
   ]) {
     nodeAssert.throws(
       () =>
@@ -495,10 +498,14 @@ test("Chrome runtime package registers the lifecycle service worker", () => {
   );
 });
 
-test("Chrome lifecycle does not add extension permissions", () => {
+test("Chrome badge requires only the alarms extension permission", () => {
   for (const permissionOverride of [
+    { permissions: undefined },
+    { permissions: [] },
     { permissions: ["activeTab"] },
     { permissions: ["storage"] },
+    { permissions: ["alarms", "tabs"] },
+    { permissions: ["alarms", "alarms"] },
     { optional_permissions: ["storage"] },
   ]) {
     nodeAssert.throws(
@@ -508,7 +515,7 @@ test("Chrome lifecycle does not add extension permissions", () => {
           popupHTML,
           chromePackageEntries,
         ),
-      /must not request extension API permissions/u,
+      /must request only the alarms extension API permission/u,
     );
   }
 
