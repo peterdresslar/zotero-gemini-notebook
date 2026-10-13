@@ -63,8 +63,7 @@ export interface CreateBridgeJobFromCollectionInput extends CreateBridgeJobBase 
 }
 
 export type CreateBridgeJobInput =
-  | CreateBridgeJobFromItemsInput
-  | CreateBridgeJobFromCollectionInput;
+  CreateBridgeJobFromItemsInput | CreateBridgeJobFromCollectionInput;
 
 export interface PendingResponse {
   items: StagedItem[];

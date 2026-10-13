@@ -65,7 +65,7 @@ function inspectRgbaArtwork(buffer) {
   assert.equal(buffer[28], 0, "Store icons must not be interlaced");
 
   const idatChunks = [];
-  for (let offset = 8; offset < buffer.length; ) {
+  for (let offset = 8; offset < buffer.length;) {
     const length = buffer.readUInt32BE(offset);
     const type = buffer.toString("ascii", offset + 4, offset + 8);
     if (type === "IDAT") {

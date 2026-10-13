@@ -491,12 +491,10 @@ function normalizeOutputLimit(value) {
 
 function normalizeAbsolutePath(value, field) {
   const path = normalizeBoundedString(value, field, MAX_PATH_LENGTH);
-  if (
-    !(
-      (path.startsWith("/") && !path.startsWith("//")) ||
-      /^[A-Za-z]:[\\/]/u.test(path)
-    )
-  ) {
+  if (!(
+    (path.startsWith("/") && !path.startsWith("//")) ||
+    /^[A-Za-z]:[\\/]/u.test(path)
+  )) {
     throw new TypeError(`${field} must be an absolute local path.`);
   }
   return path;

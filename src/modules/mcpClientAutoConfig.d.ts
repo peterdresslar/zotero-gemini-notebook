@@ -1,9 +1,7 @@
 export type McpAutoConfigClientId = "codex" | "claude-code" | "gemini-cli";
 export type McpAutoConfigMode = "add" | "reset";
 export type McpAutoConfigRegistrationStatus =
-  | "absent"
-  | "exact-match"
-  | "conflict";
+  "absent" | "exact-match" | "conflict";
 export type McpAutoConfigResetReason =
   | "managed-exact-match"
   | "missing-receipt"

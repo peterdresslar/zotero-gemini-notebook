@@ -19,8 +19,7 @@ export interface NormalizedBridgeJobFromCollection extends NormalizedBridgeJobBa
 }
 
 export type NormalizedCreateBridgeJobInput =
-  | NormalizedBridgeJobFromItems
-  | NormalizedBridgeJobFromCollection;
+  NormalizedBridgeJobFromItems | NormalizedBridgeJobFromCollection;
 
 export function normalizeCreateBridgeJobInput(
   input: unknown,
