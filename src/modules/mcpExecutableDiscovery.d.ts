@@ -1,8 +1,7 @@
 import type { McpAutoConfigClientId } from "./mcpClientAutoConfig.js";
 
 export type McpExecutableDiscoveryErrorCode =
-  | "MCP_CLIENT_EXECUTABLE_NOT_FOUND"
-  | "MCP_RUNTIME_EXECUTABLE_NOT_FOUND";
+  "MCP_CLIENT_EXECUTABLE_NOT_FOUND" | "MCP_RUNTIME_EXECUTABLE_NOT_FOUND";
 
 export class McpExecutableDiscoveryError extends Error {
   readonly code: McpExecutableDiscoveryErrorCode;

@@ -25,6 +25,8 @@ pnpm run lint:check
 
 Run any additional tests relevant to your change, such as `pnpm run test:mcp` for MCP changes. See the [source build instructions](README.md#source-build) for packaging and installing local builds.
 
+The build uses TypeScript 7 through `@typescript/native`. The `typescript` dependency intentionally aliases TypeScript 6 for ESLint and test helpers that still need its compiler API; keep both until those tools support the newer API.
+
 For changes affecting behavior, test the PR's Zotero plugin and Chrome companion together with Zotero running and Gemini Notebook open in Chrome. Exercise the affected workflow from staging sources through import, and confirm the expected sources actually appear in the notebook. Include new or existing notebooks, error recovery, large transfers, or the optional MCP client when your change affects those paths. Passing automated checks alone does not establish that the integration works.
 
 In the PR, briefly record the versions and setup you tested, the steps you tried, the results, and anything you could not verify. If you cannot complete the necessary integration testing, open a draft PR and say what still needs testing. Documentation-only changes need checks appropriate to the files changed, not a full import test.
