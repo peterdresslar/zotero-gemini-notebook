@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Effective September 6, 2026.
+Effective October 13, 2026.
 
 Zotero Gemini Notebook, including its Chrome extension **Zotero-Gemini Notebook Connector**, has one purpose: moving sources that a user stages in Zotero into a Gemini Notebook chosen by that user. The Zotero plugin and Chrome extension run on the user's computer. The project has no developer-operated server, analytics, advertising, or telemetry.
 
@@ -9,6 +9,8 @@ Zotero Gemini Notebook, including its Chrome extension **Zotero-Gemini Notebook 
 To show and complete an import, the connector handles staged Zotero source information such as titles, creators, years, filenames, file types, local attachment identifiers, counts, and temporary job identifiers. When the user starts an import, it reads the selected local attachment files. On `notebook.google.com` and `notebooklm.google.com`, it also inspects the current page structure, notebook location, and upload state needed to complete and report the handoff.
 
 The connector does not browse arbitrary files, read unstaged Zotero attachments, read browser cookies, or inspect pages outside those two Gemini Notebook hosts.
+
+While a Gemini Notebook tab is open, the extension periodically checks the local Zotero plugin's readiness and file count to display a toolbar badge. These status checks do not retrieve source metadata or file contents. The count is used only for the badge and is not saved to persistent storage.
 
 ## How data is used and shared
 

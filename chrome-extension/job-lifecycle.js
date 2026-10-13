@@ -346,7 +346,7 @@ function decodeAscii(bytes) {
   return new globalThis.TextDecoder("ascii", { fatal: true }).decode(bytes);
 }
 
-function isGeminiNotebookUrl(value) {
+export function isGeminiNotebookUrl(value) {
   if (typeof value !== "string") return false;
   try {
     const url = new URL(value);

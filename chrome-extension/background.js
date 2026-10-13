@@ -9,6 +9,12 @@ import {
   readJobClaimMessage,
   readJobLifecycleMessage,
 } from "./job-lifecycle.js";
+import { initializeReadyBadge } from "./ready-badge.js";
+
+const readyBadge = initializeReadyBadge({
+  chromeApi: chrome,
+  fetchImpl: fetch,
+});
 
 const REPORT_FAILURE = Object.freeze({
   success: false,
@@ -47,6 +53,7 @@ async function handleJobControlMessage(message, sender) {
         claimId,
         jobId,
       });
+      void readyBadge.refresh();
       return { success: true };
     }
 

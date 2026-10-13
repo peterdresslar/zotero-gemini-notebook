@@ -34,6 +34,7 @@ const bridgeRequestsFilename = "bridge-requests.js";
 const geminiControlsFilename = "gemini-controls.js";
 const jobLifecycleFilename = "job-lifecycle.js";
 const backgroundFilename = "background.js";
+const readyBadgeFilename = "ready-badge.js";
 const chromePackageEntries = [
   backgroundFilename,
   bridgeRequestsFilename,
@@ -52,6 +53,7 @@ const chromePackageEntries = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  readyBadgeFilename,
   "source-verification.js",
   uploadHandoffFilename,
   uploadTransferFilename,
@@ -459,6 +461,7 @@ function assertChromeRuntimePackage(
     geminiControlsFilename,
     jobLifecycleFilename,
     backgroundFilename,
+    readyBadgeFilename,
     "content.js",
     "injector.js",
   ];
@@ -486,13 +489,13 @@ function assertChromeRuntimePackage(
   );
 
   assert(
-    (manifest.permissions === undefined ||
-      (Array.isArray(manifest.permissions) &&
-        manifest.permissions.length === 0)) &&
+    Array.isArray(manifest.permissions) &&
+      manifest.permissions.length === 1 &&
+      manifest.permissions[0] === "alarms" &&
       (manifest.optional_permissions === undefined ||
         (Array.isArray(manifest.optional_permissions) &&
           manifest.optional_permissions.length === 0)),
-    `${description} manifest must not request extension API permissions`,
+    `${description} manifest must request only the alarms extension API permission`,
   );
   assert(
     manifest.optional_host_permissions === undefined ||

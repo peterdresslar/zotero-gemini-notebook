@@ -32,7 +32,9 @@ Transfer sources explicitly staged by the user in Zotero into the user's chosen 
 
 `https://notebook.google.com/*` and `https://notebooklm.google.com/*` identify the current or newly created notebook and hand the user-selected files to Gemini Notebook's upload interface. The second host preserves compatibility with Google's legacy Gemini Notebook hostname.
 
-The extension requests no general Chrome API permissions, does not expose external messaging, and does not load or execute remote code.
+The `alarms` permission refreshes the ready-file count badge while a Gemini Notebook tab is open. The extension checks only the local plugin's status endpoint for this badge; it does not retrieve filenames or file contents in the background.
+
+The extension requests no other Chrome API permissions, does not expose external messaging, and does not load or execute remote code.
 
 ## Privacy Practices notes
 
