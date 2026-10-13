@@ -1,9 +1,5 @@
 export type McpClientPreset =
-  | "codex"
-  | "claude-code"
-  | "gemini-cli"
-  | "claude-desktop"
-  | "custom";
+  "codex" | "claude-code" | "gemini-cli" | "claude-desktop" | "custom";
 
 export interface McpClientPresetDefinition {
   readonly id: McpClientPreset;
