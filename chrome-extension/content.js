@@ -844,6 +844,34 @@ function highlightAssistedUploadControl(uploadControl, onTrustedClick) {
   uploadControl.style.outlineOffset = "3px";
   uploadControl.scrollIntoView({ block: "center", inline: "center" });
 
+  // This Gemini build triggers the upload on hover (mouseenter) rather than on
+  // click. Dispatch synthetic mouse events so no manual hover is needed; the
+  // MAIN-world injector intercepts the resulting hidden file input.
+  const controlRect =
+    typeof uploadControl.getBoundingClientRect === "function"
+      ? uploadControl.getBoundingClientRect()
+      : { left: 0, top: 0, width: 0, height: 0 };
+  const mouseOpts = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    ...(typeof window !== "undefined" ? { view: window } : {}),
+    clientX: controlRect.left + controlRect.width / 2,
+    clientY: controlRect.top + controlRect.height / 2,
+  };
+  if (typeof MouseEvent === "function") {
+    for (const type of [
+      "pointerenter",
+      "pointerover",
+      "mouseover",
+      "mouseenter",
+      "pointermove",
+      "mousemove",
+    ]) {
+      uploadControl.dispatchEvent(new MouseEvent(type, mouseOpts));
+    }
+  }
+
   let trustedClickHandled = false;
   const clickLogger = (event) => {
     console.log(

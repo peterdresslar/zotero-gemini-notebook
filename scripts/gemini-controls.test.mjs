@@ -179,3 +179,51 @@ test("returns no controls for an unknown Gemini Notebook layout", () => {
   assert.equal(controls.findAddSourcesControl(root), null);
   assert.deepEqual(controls.findUploadFileControls(root), []);
 });
+
+test("finds a localized add-source tonal button with a plus icon inside the sources panel", () => {
+  const expected = element({ textContent: "Quellen hinzufügen" });
+  expected.mapQuery("mat-icon", [
+    element({ tagName: "mat-icon", textContent: "add_2" }),
+  ]);
+  const panel = element({ tagName: "div", textContent: "" });
+  panel.mapQuery("button.mat-tonal-button", [expected]);
+  const root = rootWith({
+    ".source-panel-content": [panel],
+  });
+
+  assert.equal(locator().findAddSourcesControl(root), expected);
+});
+
+test("ignores unrelated tonal buttons with a plus icon outside the sources panel", () => {
+  const decoy = element({ textContent: "Neues Notebook erstellen" });
+  decoy.mapQuery("mat-icon", [
+    element({ tagName: "mat-icon", textContent: "add" }),
+  ]);
+  const root = rootWith({
+    ".source-panel-content": [],
+    "button.mat-tonal-button": [decoy],
+  });
+
+  assert.equal(locator().findAddSourcesControl(root), null);
+});
+
+test("rejects hidden and disabled tonal add-source candidates in the panel", () => {
+  const hidden = element({ textContent: "Quellen hinzufügen", visible: false });
+  hidden.mapQuery("mat-icon", [
+    element({ tagName: "mat-icon", textContent: "add" }),
+  ]);
+  const disabled = element({
+    textContent: "Quellen hinzufügen",
+    disabled: true,
+  });
+  disabled.mapQuery("mat-icon", [
+    element({ tagName: "mat-icon", textContent: "add" }),
+  ]);
+  const panel = element({ tagName: "div", textContent: "" });
+  panel.mapQuery("button.mat-tonal-button", [hidden, disabled]);
+  const root = rootWith({
+    ".source-panel-content": [panel],
+  });
+
+  assert.equal(locator().findAddSourcesControl(root), null);
+});
