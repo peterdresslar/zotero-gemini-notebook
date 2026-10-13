@@ -101,8 +101,8 @@ Use this path only if you want to build the project locally.
 
 Prerequisites:
 
-- Node.js 22+
-- pnpm
+- Node.js 22.13+
+- pnpm 12.11.2 (pinned in `package.json`)
 - Git
 - Zotero 7 through 10. Zotero 9 and 10 are actively tested; support for Zotero 7 and 8 is best-effort.
 - Google Chrome (required for the companion extension)
