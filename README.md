@@ -1,6 +1,6 @@
 # Zotero → Gemini Notebook
 
-> **:sparkle: Preparing 0.5.1 :sparkle:**
+> **:sparkle: New in 0.5.1 :sparkle:**
 >
 > - A badge on the Chrome extension icon shows how many files are ready in Zotero: `1`–`9`, then `9+`.
 > - Improved source-button detection and uploads in German-language Gemini Notebook. See the [release notes](docs/releases/v0.5.1.md).
